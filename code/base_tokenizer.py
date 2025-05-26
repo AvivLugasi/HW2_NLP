@@ -9,7 +9,7 @@ class BaseTokenizer(ABC):
     Base abstract class for tokenizers.
     Students will implement their own tokenizers derived from this class.
     """
-    
+
     def __init__(self):
         """Initialize the tokenizer with empty vocabulary"""
         self.token_to_id = {}  # Token to ID mapping
@@ -20,12 +20,12 @@ class BaseTokenizer(ABC):
             "[BOS]": 2,
             "[EOS]": 3,
         }
-        
+
         # Initialize special tokens in the mappings
         for token, token_id in self.special_tokens.items():
             self.token_to_id[token] = token_id
             self.id_to_token[token_id] = token
-    
+
     @abstractmethod
     def train(self, texts: List[str]) -> None:
         """
@@ -35,7 +35,7 @@ class BaseTokenizer(ABC):
             texts: List of training texts
         """
         pass
-    
+
     @abstractmethod
     def encode(self, text: str) -> List[int]:
         """
@@ -48,7 +48,7 @@ class BaseTokenizer(ABC):
             A list of token IDs
         """
         pass
-    
+
     def encode_batch(self, texts: List[str]) -> List[List[int]]:
         """
         Convert a batch of text strings into token IDs
@@ -60,7 +60,7 @@ class BaseTokenizer(ABC):
             A list of lists containing token IDs
         """
         return [self.encode(text) for text in texts]
-    
+
     @abstractmethod
     def decode(self, token_ids: List[int]) -> str:
         """
@@ -73,7 +73,7 @@ class BaseTokenizer(ABC):
             The decoded text string
         """
         pass
-    
+
     def decode_batch(self, batch_token_ids: List[List[int]]) -> List[str]:
         """
         Convert a batch of token ID lists back to text strings
@@ -85,7 +85,7 @@ class BaseTokenizer(ABC):
             List of decoded text strings
         """
         return [self.decode(token_ids) for token_ids in batch_token_ids]
-    
+
     def get_vocab_size(self) -> int:
         """
         Get the size of the vocabulary
@@ -94,7 +94,7 @@ class BaseTokenizer(ABC):
             The number of tokens in the vocabulary
         """
         return len(self.token_to_id)
-    
+
     def save(self, path: str) -> None:
         """
         Save the tokenizer to a file
@@ -105,7 +105,7 @@ class BaseTokenizer(ABC):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'wb') as f:
             pickle.dump(self, f)
-    
+
     @classmethod
     def load(cls, path: str) -> 'BaseTokenizer':
         """
@@ -118,4 +118,4 @@ class BaseTokenizer(ABC):
             The loaded tokenizer
         """
         with open(path, 'rb') as f:
-            return pickle.load(f) 
+            return pickle.load(f)
