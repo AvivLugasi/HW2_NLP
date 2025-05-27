@@ -4,10 +4,16 @@ import re
 from utils import run_data_job_in_parallel
 from patterns_and_dicts import *
 from functools import partial
-import time
 
 
-def normalize_batch_static(normalizer, batch_of_text):
+def normalize_text_file(normalizer, batch_of_text: tuple) -> List[str]:
+    """
+    Normalize a text file in parallel.
+    Args:
+        batch_of_text: tuple of List of text strings, starting index to process).
+        normalizer: Normalizer instance.
+    Returns: The list of the normalized text strings
+    """
     text, start_idx = batch_of_text
     return [normalizer.normalize_text(text=t) for t in text]
 
@@ -59,17 +65,23 @@ class Normalizer:
         self.replace_html_tags = replace_html_tags
         self.replace_hashtag = replace_hashtag
 
-    def normalize_batch(self, text):
+    def normalize_batch(self, text:List[str]) -> List[str]:
         """
         Normalize a batch of text strings
         Args:
             text: List of text strings and start index of the batch from the overall data
         Returns: The list of the normalized text strings
         """
-        job = partial(normalize_batch_static, self)
+        job = partial(normalize_text_file, self)
         return run_data_job_in_parallel(data=text, job=job)
 
-    def normalize_text(self, text: str) -> list:
+    def normalize_text(self, text: str) -> str:
+        """
+        Normalize a string of text, usually a sentence.
+        Args:
+            text: string of text
+        Returns: The normalized text.
+        """
         if self.replace_html_tags:
             text = _replace_html_tags(text=text)
         if self.replace_urls:
@@ -284,9 +296,9 @@ def _replace_hashtags(text: str) -> str:
     return hashtag_pattern.sub(_hashtag_replacer, text)
 
 
-text_file = []
-with open("../data/domain_1_dev.txt", 'r', encoding='utf-8') as f:
-    text_file = f.readlines()
+# text_file = []
+# with open("../data/small_test_data.txt", 'r', encoding='utf-8') as f:
+#     text_file = f.readlines()
 
 # text = "Mrs.CJBaran&lt;3 OMG???!!!! what the hell he's very intereting...... Ｕｎｉｃｏｄｅ! 🅤🅝🅘🅒🅞🅓🅔‽ 🇺‌🇳‌🇮‌🇨‌🇴‌🇩‌🇪! 😄 ﬃ é ain't The   very name strikes Dr. Smith fear and awe into the hearts of programmers worldwide.   We all know we ought to “support Unicode” in our software (whatever that means—like using wchar_t for all the strings, right?). But Unicode can be abstruse, and diving into the thousand-page Unicode Standard plus its dozens of supplementary annexes, reports, and notes can be more than a little intimidating. I don’t blame programmers for still finding the whole thing mysterious, even 30 years after Unicode’s inception. http://bit.ly/Q3o2N  just listen to it Demi is amaizing"
 # text = "good things happen to those who wait. - soï¿½iï¿½m waiting. good things coming up aheadï¿½bring it.  iï¿½m excited!... http://tumblr.com/xlt1ub13n"
@@ -296,20 +308,17 @@ with open("../data/domain_1_dev.txt", 'r', encoding='utf-8') as f:
 # text = "@MISTERMORALES Steve, thnx 4 yr DM! thanks so much, twitter won't let me dm u back tho bc yr not following me it sez...bummer"
 # text = "@we_like_her I hope I don't have to wait for another christening party to see u"
 # text = "just got back from shopping!!!! got loads of DVDs and make up and a Hannah Montana CD"
-text = "@Lynaarchuleta WHAT!! there comin back to paris AGAIN? r u serious? they havnt been once to australia yet"
-normalizer = Normalizer(unicode_normalization='NFKD',
-                        lower_case="TITLE CASE + STOP WORDS",
-                        remove_accents=True,
-                        expand_contractions=True,
-                        replace_urls=True,
-                        replace_usernames=True,
-                        replace_hashtag=True,
-                        replace_html_tags=True)
-# start = time.time()
-# text = normalize_batch_static(normalizer, (text_file, 0))
+# text = "@Lynaarchuleta WHAT!! there comin back to paris AGAIN? r u serious? they havnt been once to australia yet"
+# normalizer = Normalizer(unicode_normalization='NFKD',
+#                         lower_case="TITLE CASE + STOP WORDS",
+#                         remove_accents=True,
+#                         expand_contractions=True,
+#                         replace_urls=True,
+#                         replace_usernames=True,
+#                         replace_hashtag=True,
+#                         replace_html_tags=True)
+# text = normalize_text_file(normalizer, (text_file, 0))
 # for sentence in text:
 #     print(sentence)
-# end = time.time()
-# print(f"Function took {end - start:.6f} seconds")
 
-print(normalizer.normalize_text(text))
+# print(normalizer.normalize_text(text))

@@ -412,6 +412,7 @@ CONTRACTIONS_DICT = \
      "bday": "birthday",
      "l8r": "later",
      "2day": "today",
+     "tday": "today",
      "2moro": "tomorrow",
      "2mrw": "tomorrow",
      "4eva": "forever",
@@ -435,10 +436,12 @@ CONTRACTIONS_DICT = \
      "2moro": "tomorrow",
      "2nite": "tonight",
      "4get": "forget",
+     "4got": "forgot",
      "4u": "for you",
      "fella": "fellow",
      "fyi": "for your info",
-     "smh": "shaking my head"
+     "smh": "shaking my head",
+     "str8": "straight"
      }
 
 HTML_DICT = {
@@ -457,6 +460,52 @@ HTML_DICT = {
     "&iexcl;": "¡",
     "&iquest;": "¿",
     "&deg;": "°"
+}
+
+ASCII_EMOJI_TO_TOKEN = {
+    ":)": "[HAPPY]",
+    ":-)": "[HAPPY]",
+    ":D": "[VERY_HAPPY]",
+    ":-D": "[VERY_HAPPY]",
+    ":(": "[SAD]",
+    ":-(": "[SAD]",
+    ":|": "[NEUTRAL]",
+    ":-|": "[NEUTRAL]",
+    ":/": "[UNSURE]",
+    ":-/": "[UNSURE]",
+    ":\\": "[UNSURE]",
+    ":-\\": "[UNSURE]",
+    ":P": "[PLAYFUL]",
+    ":-P": "[PLAYFUL]",
+    ";)": "[WINK]",
+    ";-)": "[WINK]",
+    ":o": "[SURPRISED]",
+    ":-o": "[SURPRISED]",
+    ":O": "[SURPRISED]",
+    ":-O": "[SURPRISED]",
+    ":'(": "[CRYING]",
+    ":'-)": "[HAPPY_TEARS]",
+    ":')": "[HAPPY_TEARS]",
+    "<3": "[LOVE]",
+    "</3": "[HEARTBROKEN]",
+    ":*": "[KISS]",
+    ":-*": "[KISS]",
+    "XD": "[LAUGHING]",
+    "xD": "[LAUGHING]",
+    "XP": "[LAUGHING]",
+    ">:(": "[ANGRY]",
+    "D:": "[HORRIFIED]",
+    ":3": "[CUTE]",
+    "O:)": "[INNOCENT]",
+    ">:O": "[SHOCKED]",
+    "T_T": "[CRYING]",
+    "-_-": "[ANNOYED]",
+    "^_^": "[HAPPY]",
+    "O_O": "[SHOCKED]",
+    "-.-": "[DISAPPOINTED]",
+    "=_=": "[TIRED]",
+    "UwU": "[CUTE]",
+    "OwO": "[SURPRISED_CUTE]",
 }
 
 STOP_WORDS = (
@@ -575,3 +624,11 @@ USER_TOKEN = "[USER]"
 HASHTAG_RE = r'#\S+'
 # hashtag token
 HASHTAG_TOKEN = "[HASHTAG]"
+
+# marker for beginning of a word
+BEGINNING_OF_WORD_MARK = "<W>"
+# marker for whitespace
+SPACE_MARK = "<SP>"
+
+# spliting text strings to pre tokens predefined regex
+SPLITER_REGEX = r"""(@\w+|#\w+|https?://\S+|\d+|[^\w\s]|[\w']+|\s+)"""
