@@ -1,10 +1,10 @@
 REMOVE_WHITESPACES_PATTERN = (r"\s+", " ")  # Match all whitespace and replace with single space
 
 # Replace all consecutive occurrences of same punctuation with single occurrence
-# except for multiple '.' that are replaced with '...'
+# except for multiple '.' that are replaced with '... '
 REMOVE_PUNCTUATION_PATTERN = (
     r'([!\"#$%&\'()*+,\-/:;<=>?@[\\\]^_`{|}~])\1+|\.{2,}',
-    lambda m: m.group(1) if m.group(1) else '...'
+    lambda m: m.group(1) if m.group(1) else '... '
 )
 
 # dict of common contractions in english and their long form
@@ -176,6 +176,7 @@ CONTRACTIONS_DICT = \
      "givn": "given",
      "gonna": "going to",
      "gonn": "going to",
+     "goin'": "going",
      "gotta": "got to",
      "hadnt": "had not",
      "hadve": "had have",
@@ -441,7 +442,8 @@ CONTRACTIONS_DICT = \
      "fella": "fellow",
      "fyi": "for your info",
      "smh": "shaking my head",
-     "str8": "straight"
+     "str8": "straight",
+     "who's": "who is"
      }
 
 HTML_DICT = {
@@ -627,8 +629,6 @@ HASHTAG_TOKEN = "[HASHTAG]"
 
 # marker for beginning of a word
 BEGINNING_OF_WORD_MARK = "<W>"
-# marker for whitespace
-SPACE_MARK = "<SP>"
 
 # spliting text strings to pre tokens predefined regex
 SPLITER_REGEX = r"""(@\w+|#\w+|https?://\S+|\d+|[^\w\s]|[\w']+|\s+)"""

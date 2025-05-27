@@ -295,7 +295,6 @@ def _replace_hashtags(text: str) -> str:
     hashtag_pattern = re.compile(HASHTAG_RE)
     return hashtag_pattern.sub(_hashtag_replacer, text)
 
-
 # text_file = []
 # with open("../data/small_test_data.txt", 'r', encoding='utf-8') as f:
 #     text_file = f.readlines()

@@ -1,7 +1,7 @@
 from functools import partial
 from typing import List
 from utils import run_data_job_in_parallel
-from patterns_and_dicts import SPLITER_REGEX, BEGINNING_OF_WORD_MARK, SPACE_MARK, HASHTAG_TOKEN, USER_TOKEN, URL_TOKEN
+from patterns_and_dicts import SPLITER_REGEX, BEGINNING_OF_WORD_MARK, HASHTAG_TOKEN, USER_TOKEN, URL_TOKEN
 import re
 
 
@@ -61,22 +61,9 @@ class PreTokenizer:
             return re.findall(self.custom_spliter, text)
         else:
             # Use regex to find words and spaces
-            pre_tokens = re.findall(r'\s+|\S+', text)
-
-            pre_tokens_output = []
-            previous_was_space = False
-
-            for pre_token in pre_tokens:
-                if pre_token.isspace():
-                    previous_was_space = True
-                else:
-                    marker = ""
-                    if not self.train_mode:
-                        if previous_was_space:
-                            marker = SPACE_MARK
-                        marker += BEGINNING_OF_WORD_MARK
-                    pre_tokens_output.append(marker + pre_token)
-                    previous_was_space = False
+            pre_tokens_output = text.split()
+            if not self.train_mode:
+                pre_tokens_output = [BEGINNING_OF_WORD_MARK + pre_token for pre_token in pre_tokens_output]
 
             if self.split_punctuation:
                 after_punctuation_split = []
@@ -85,7 +72,6 @@ class PreTokenizer:
                     # Build regex string safely (escaping special characters)
                     special_tokens = [re.escape(tok) for tok in [
                         BEGINNING_OF_WORD_MARK,
-                        SPACE_MARK,
                         HASHTAG_TOKEN,
                         USER_TOKEN,
                         URL_TOKEN
@@ -114,15 +100,28 @@ class PreTokenizer:
                 pre_tokens_output = after_punctuation_split
             return pre_tokens_output
 
-
 # text_file = []
-# with open("../data/small_normalized_test_data.txt", 'r', encoding='utf-8') as f:
+# with open("../data/small_test_data.txt", 'r', encoding='utf-8') as f:
 #     text_file = f.readlines()
 #
-# text = "[USER] i had that exp yesterday...movie and dinner afteer a long long time...and let me tell you...it is not that great!"
+# normalizer = Normalizer(unicode_normalization='NFKD',
+#                         lower_case="TITLE CASE + STOP WORDS",
+#                         remove_accents=True,
+#                         expand_contractions=True,
+#                         replace_urls=True,
+#                         replace_usernames=True,
+#                         replace_hashtag=True,
+#                         replace_html_tags=True)
+# text = normalize_text_file(normalizer, (text_file, 0))
+
+#text = "[USER] i had that exp yesterday...movie and dinner afteer a long long time...and let me tell you...it is not that great!"
 # pre_tokenizer = PreTokenizer(train_mode=False,
 #                              split_punctuation=True)
-# pre_tokenize_text = pre_tokenize_text_file(pre_tokenizer, (text_file, 0))
+# pre_tokenize_text = pre_tokenize_text_file(pre_tokenizer, (text, 0))
+# print(len(pre_tokenize_text))
+# print(pre_tokenize_text[15])
+# print(type(pre_tokenize_text))
+#
 # for t in pre_tokenize_text:
 #     print(t)
 # print("--- before pre tokenization")
