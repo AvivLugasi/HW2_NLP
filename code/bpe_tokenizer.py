@@ -39,6 +39,7 @@ class BPETokenizer(BaseTokenizer, ABC):
         """
         normalized_text_file = normalize_text_file(normalizer=self.normalizer,
                                                    batch_of_text=(texts, 0))
+        self.pre_tokenizer.train_mode = True
         pre_tokens_lists = pre_tokenize_text_file(pre_tokenizer=self.pre_tokenizer,
                                                   batch_of_text=(normalized_text_file, 0))
         pass
@@ -53,6 +54,7 @@ class BPETokenizer(BaseTokenizer, ABC):
             A list of token IDs
         """
         normalized_text = self.normalizer.normalize_text(text=text)
+        self.pre_tokenizer.train_mode = False
         pre_tokens_list = self.pre_tokenizer.pre_tokenize_str(text=normalized_text)
         pass
 
