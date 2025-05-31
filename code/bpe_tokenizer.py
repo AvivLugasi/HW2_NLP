@@ -73,7 +73,7 @@ class BPETokenizer(BaseTokenizer, ABC):
     def initial_spliter(self, text: str) -> List[str]:
         """
         Args:
-            text: the text to split
+            text:
         Returns:
         """
         pass
