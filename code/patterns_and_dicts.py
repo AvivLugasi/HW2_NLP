@@ -1,10 +1,22 @@
-REMOVE_WHITESPACES_PATTERN = (r"\s+", " ")  # Match all whitespace and replace with single space
+# Function to replace repeated punctuation
+def remove_punctuation_replacer(match_obj):
+    """
+    Replacer for REMOVE_PUNCTUATION_PATTERN.
+    If group(1) exists (a repeated punctuation other than '.'), return that single punctuation.
+    Otherwise (i.e., match was multiple dots), return the string '... '.
+    """
+    # match_obj.group(1) will be None if the match was multiple dots ('.{2,}')
+    return match_obj.group(1) if match_obj.group(1) else "... "
 
-# Replace all consecutive occurrences of same punctuation with single occurrence
-# except for multiple '.' that are replaced with '... '
+
+# Remove all whitespace and replace with a single space
+REMOVE_WHITESPACES_PATTERN = (r"\s+", " ")
+
+# Replace all consecutive occurrences of the same punctuation with a single occurrence,
+# except that multiple '.' are replaced with '... '
 REMOVE_PUNCTUATION_PATTERN = (
     r'([!\"#$%&\'()*+,\-/:;<=>?@[\\\]^_`{|}~])\1+|\.{2,}',
-    lambda m: m.group(1) if m.group(1) else '... '
+    remove_punctuation_replacer
 )
 
 # dict of common contractions in english and their long form
