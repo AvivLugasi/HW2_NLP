@@ -5,13 +5,15 @@ from patterns_and_dicts import SPLITER_REGEX, BEGINNING_OF_WORD_MARK, HASHTAG_TO
 import re
 
 
-def pre_tokenize_text_file(pre_tokenizer, batch_of_text: tuple) -> List[str]:
+def pre_tokenize_text_file(pre_tokenizer, batch_of_text: tuple) -> List[List[str]]:
     """
-    pre tokenize a text file in parallel.
+    Pre‐tokenize a text file in parallel.
+
     Args:
-        batch_of_text: tuple of List of text strings, starting index to process).
         pre_tokenizer: PreTokenizer instance.
-    Returns: The list of pre token lists.
+        batch_of_text: (List[str], start_idx) – a batch of normalized strings.
+    Returns:
+        A list of lists of pre‐tokens for each input string.
     """
     text, start_idx = batch_of_text
     return [pre_tokenizer.pre_tokenize_str(text=t) for t in text]
@@ -23,82 +25,102 @@ class PreTokenizer:
                  custom_spliter: str = None,
                  train_mode: bool = False):
         """
-        Initialize the Pre_Tokenizer.
+        Initialize the PreTokenizer.
 
         Args:
-            split_whitespace (bool): If True, the tokenizer will split tokens based on whitespace characters.
-            split_punctuation (bool): If True, the tokenizer will split tokens based on punctuation marks.
-            custom_spliter (str): A custom regular expression string to use as the splitting pattern.
-                                  If set to "PRE DEFINED", a predefined regex constant (SPLITER_REGEX) will be used.
-                                  If None, no custom splitting pattern is applied.
-            train_mode: Weather to append special whitespace and beginning of a word marks. Default is false.
+            split_punctuation (bool): If True, split tokens by punctuation (while still preserving
+                                       special markers like "<W>", "[USER]", etc.).
+            custom_spliter (str): If set to "PRE DEFINED", use SPLITER_REGEX; if another regex,
+                                  use that. If None, split on whitespace only.
+            train_mode (bool): Controls whether to use multi‐threaded batching (True) or not (False),
+                               but DOES NOT affect whether we prefix "<W>": we always will.
         """
         self.split_punctuation = split_punctuation
+        if custom_spliter is not None:
+            if custom_spliter == "PRE DEFINED":
+                self.custom_spliter = SPLITER_REGEX
+            else:
+                self.custom_spliter = custom_spliter
+        else:
+            self.custom_spliter = None
 
-        self.custom_spliter = custom_spliter if custom_spliter is not None \
-            else SPLITER_REGEX if custom_spliter == "PRE DEFINED" else None
-
+        # NOTE: train_mode no longer controls "<W>"‐prefixing. We ALWAYS prefix "<W>".
         self.train_mode = train_mode
 
-    def pre_tokenize_batch(self, text:List[str]) -> List[List[str]]:
+    def pre_tokenize_batch(self, text: List[str]) -> List[List[str]]:
         """
-        pre tokenize a batch of normalized text strings
-        Args:
-            text: List of normalized text strings and start index of the batch from the overall data
-        Returns: The list of the normalized text strings
+        Pre‐tokenize a batch of normalized text strings in parallel.
         """
         job = partial(pre_tokenize_text_file, self)
         return run_data_job_in_parallel(data=text, job=job)
 
     def pre_tokenize_str(self, text: str) -> List[str]:
         """
-        Split a string of normalized text to a pre token list
-        Args:
-            text: string of normalized text
-        Returns: List of pre tokens
+        Split a normalized string into pre‐tokens.  Every original "word" (split on whitespace)
+        will be prefixed with "<W>".  If split_punctuation=True, we further split by punctuation,
+        but the "<W>" stays attached to the first sub‐token of each original word.
+
+        Returns: List of pre‐tokens (with exactly one "<W>" at each “word” boundary).
         """
+        # 1) If custom_spliter is provided, just use it:
         if self.custom_spliter:
             return re.findall(self.custom_spliter, text)
-        else:
-            # Use regex to find words and spaces
-            pre_tokens_output = text.split()
-            if not self.train_mode:
-                pre_tokens_output = [BEGINNING_OF_WORD_MARK + pre_token for pre_token in pre_tokens_output]
 
-            if self.split_punctuation:
-                after_punctuation_split = []
-                for pre_token in pre_tokens_output:
-                    # split pre token by punctuation retain the punctuation
-                    # Build regex string safely (escaping special characters)
-                    special_tokens = [re.escape(tok) for tok in [
-                        BEGINNING_OF_WORD_MARK,
-                        HASHTAG_TOKEN,
-                        USER_TOKEN,
-                        URL_TOKEN
-                    ]]
+        # 2) Otherwise, split on whitespace first:
+        raw_tokens = text.split()  # e.g. ["hello-world!", "I’m", "fine."]
+        #  Always prefix each raw token with "<W>"
+        prefixed_tokens = [BEGINNING_OF_WORD_MARK + tok for tok in raw_tokens]
+        # e.g. ["<W>hello-world!", "<W>I’m", "<W>fine."]
 
-                    # Join them into a non-capturing group
-                    special_token_pattern = "|".join(special_tokens)
+        if not self.split_punctuation:
+            # No punctuation splitting: just return as‐is
+            return prefixed_tokens
 
-                    # Full pattern: match special tokens OR word characters OR punctuation
-                    pattern = rf"(?:{special_token_pattern})|\w+|[^\w\s]"
-                    pre_token_splitted_by_punctuation = re.findall(pattern, pre_token)
-                    if not self.train_mode:
-                        merged_splited_word_start_mark = []
-                        i = 0
-                        while i < len(pre_token_splitted_by_punctuation):
-                            if pre_token_splitted_by_punctuation[i] == BEGINNING_OF_WORD_MARK:
-                                to_merge = pre_token_splitted_by_punctuation[i] + pre_token_splitted_by_punctuation[i+1]
-                                i += 2
-                            else:
-                                to_merge = pre_token_splitted_by_punctuation[i]
-                                i += 1
-                            merged_splited_word_start_mark.append(to_merge)
-                        pre_token_splitted_by_punctuation = merged_splited_word_start_mark
-                    after_punctuation_split.extend(pre_token_splitted_by_punctuation)
+        # 3) If split_punctuation=True, we must split each prefixed_token on punctuation,
+        #    but we want to keep "<W>" and attach it to the first resulting piece.
+        all_splits: List[str] = []
+        # Build a regex that recognizes these “special tokens” as atomic:
+        special_tokens = [
+            re.escape(BEGINNING_OF_WORD_MARK),
+            re.escape(HASHTAG_TOKEN),
+            re.escape(USER_TOKEN),
+            re.escape(URL_TOKEN)
+        ]
+        special_token_pattern = r"(?:%s)" % "|".join(special_tokens)
+        # Final pattern: either <W> (or other special tokens), or alphanumeric, or single punctuation.
+        # This ensures we never break "<W>" away from the first sub‐token, because "<W>" is matched as one ///
+        # atomic token.
+        pattern = rf"{special_token_pattern}|\w+|[^\w\s]"
 
-                pre_tokens_output = after_punctuation_split
-            return pre_tokens_output
+        for pref in prefixed_tokens:
+            # Example: pref = "<W>hello-world!"
+            subtoks = re.findall(pattern, pref)
+            # e.g. subtoks might be ["<W>", "hello", "-", "world", "!"]
+            # Now we must merge "<W>" with the very next piece ("hello"), so it becomes "<W>hello":
+            merged: List[str] = []
+            i = 0
+            while i < len(subtoks):
+                tok = subtoks[i]
+                if tok == BEGINNING_OF_WORD_MARK:
+                    # Merge this with subtoks[i+1] (safe because every pref was "<W>..."):
+                    if i + 1 < len(subtoks):
+                        merged_tok = BEGINNING_OF_WORD_MARK + subtoks[i + 1]
+                        merged.append(merged_tok)
+                        i += 2
+                    else:
+                        # Edge case: "<W>" was the only piece (rare if the word were literally empty);
+                        # keep it alone.
+                        merged.append(BEGINNING_OF_WORD_MARK)
+                        i += 1
+                else:
+                    # Just a normal sub‐token (either a punctuation or a standalone word piece)
+                    merged.append(tok)
+                    i += 1
+            # e.g. merged might be ["<W>hello", "-", "world", "!"]
+            all_splits.extend(merged)
+
+        return all_splits
+
 
 # text_file = []
 # with open("../data/small_test_data.txt", 'r', encoding='utf-8') as f:
