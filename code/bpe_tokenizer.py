@@ -1,15 +1,11 @@
-# bpe_tokenizer.py
 
 from abc import ABC
 from typing import List, Tuple, Dict, Set
-import pickle
 
 from base_tokenizer import BaseTokenizer
 from normalizer import Normalizer, normalize_text_file
 from pre_tokenizer import PreTokenizer, pre_tokenize_text_file
-
-import heapq
-from collections import defaultdict
+from collections import Counter
 
 
 class BPETokenizer(BaseTokenizer, ABC):
@@ -57,19 +53,17 @@ class BPETokenizer(BaseTokenizer, ABC):
             )
         self.pre_tokenizer = pre_tokenizer
 
-
     def train(self, texts: List[str]) -> None:
         """
-        Incremental‐update BPE training with bounds check to avoid out-of-range.
-        1. Normalize & pre-tokenize the corpus.
-        2. Build tokenized_corpus: List[List[str]] of symbol‐lists.
-        3. Build pair_positions: map each (sym_i, sym_{i+1}) → set of (word_idx, pos).
-        4. Build a max‐heap of (−frequency, pair).
-        5. Repeat up to self.vocab_size merges:
-           a. Pop highest‐frequency pair (A, B) from heap (skip stale entries).
-           b. For each recorded location (word_idx, pos), check bounds and merge (A,B)→A+B.
-           c. Update neighbor pairs locally and push updated frequencies into the heap.
-        6. After merges, collect all remaining symbols into self.vocab and assign IDs (preserving specials).
+        BPE training via “Counter re‐count each iteration” to avoid scanning huge maps.
+        Steps:
+          1. Normalize & pre-tokenize the entire corpus.
+          2. Build `tokenized_corpus`: a List[List[str]] of symbols (including "<W>").
+          3. Repeat up to self.vocab_size merges:
+             a. Count all adjacent pairs in the corpus with Counter.
+             b. Pick the most common pair → merged_symbol.
+             c. Rebuild every word that contains that pair, merging all occurrences.
+          4. After merges, collect the final vocab and assign IDs.
         """
         print(f"==== Starting incremental BPE training for {len(texts)} lines, up to {self.vocab_size} merges ====\n")
 
@@ -89,126 +83,72 @@ class BPETokenizer(BaseTokenizer, ABC):
         print("==== Done Pre-tokenize ====\n")
 
         # 3) Build tokenized_corpus and pair_positions
-        tokenized_corpus: List[List[str]] = []
-        pair_positions: Dict[Tuple[str, str], Set[Tuple[int, int]]] = defaultdict(set)
+        all_words = [w for line_tokens in pre_tokenized_sentences for w in line_tokens]
+        tokenized_corpus = [
+            ([self.space_token] + list(w[len(self.space_token):]))
+            if w.startswith(self.space_token)
+            else list(w)
+            for w in all_words
+        ]
+        print(f"==== Built tokenized_corpus (total words = {len(tokenized_corpus)}) ====\n")
 
-        for line_tokens in pre_tokenized_sentences:
-            for word in line_tokens:
-                # Convert word → symbols, e.g. "<W>hello" → ["<W>", "h", "e", "l", "l", "o"]
-                if word.startswith(self.space_token):
-                    symbols = [self.space_token] + list(word[len(self.space_token):])
-                else:
-                    symbols = list(word)
 
-                word_idx = len(tokenized_corpus)
-                tokenized_corpus.append(symbols)
-
-                # Register adjacent pairs in this symbol list
-                for i in range(len(symbols) - 1):
-                    pair = (symbols[i], symbols[i + 1])
-                    pair_positions[pair].add((word_idx, i))
-
-        print("==== Done Build tokenized_corpus and pair_positions ====\n")
-
-        # 4) Build max‐heap of (−frequency, pair)
-        heap: List[Tuple[int, Tuple[str, str]]] = []
-        for pair, locs in pair_positions.items():
-            freq = len(locs)
-            if freq > 0:
-                heapq.heappush(heap, (-freq, pair))
-
-        # 5) Perform merges incrementally
         self.rules = []
         merges_done = 0
 
-        while merges_done < self.vocab_size and heap:
-            neg_freq, best_pair = heapq.heappop(heap)
-            freq = -neg_freq
+        # 4) Perform merges up to vocab_size
+        while merges_done < self.vocab_size:
+            # 4a) Count all adjacent pairs in the entire corpus
+            pair_counts = Counter()
+            for symbols in tokenized_corpus:
+                pair_counts.update(zip(symbols, symbols[1:]))
 
-            # Check for stale entry
-            actual_freq = len(pair_positions.get(best_pair, set()))
-            if actual_freq != freq:
-                if actual_freq > 0:
-                    heapq.heappush(heap, (-actual_freq, best_pair))
-                continue
+            if not pair_counts:
+                # No pairs left → stop
+                break
 
-            # If no useful merges remain, break
+            # 4b) Select the most common pair
+            best_pair, freq = pair_counts.most_common(1)[0]
             if freq < 1:
-                print(f"Iteration {merges_done + 1}: highest freq < 1 → stopping early.\n")
                 break
 
             merges_done += 1
             self.rules.append(best_pair)
             A, B = best_pair
             merged_symbol = A + B
-
             print(f"--- Merge #{merges_done}: {best_pair} → '{merged_symbol}' (freq={freq})")
 
-            # 5a) For each recorded location of (A, B), merge in tokenized_corpus
-            locations = list(pair_positions[best_pair])
-            for (word_idx, pos) in locations:
-                symbols = tokenized_corpus[word_idx]
-
-                # **Bounds check**: ensure pos+1 is still valid
-                if pos + 1 >= len(symbols):
-                    # This location is stale (the word was shortened by prior merges)
+            # 4c) Rebuild each word that contains (A, B)
+            for idx, symbols in enumerate(tokenized_corpus):
+                # Quick check: skip if A or B aren't in this word at all
+                if A not in symbols or B not in symbols:
                     continue
 
-                if symbols[pos] != A or symbols[pos + 1] != B:
-                    # Something changed here already—skip
-                    continue
+                new_symbols: List[str] = []
+                i = 0
+                did_merge = False
+                while i < len(symbols):
+                    if i < len(symbols) - 1 and symbols[i] == A and symbols[i + 1] == B:
+                        new_symbols.append(merged_symbol)
+                        i += 2
+                        did_merge = True
+                    else:
+                        new_symbols.append(symbols[i])
+                        i += 1
 
-                # Perform the actual merge: replace A, B → merged_symbol
-                symbols[pos] = merged_symbol
-                del symbols[pos + 1]
+                if did_merge:
+                    tokenized_corpus[idx] = new_symbols
 
-                # Remove this location from pair_positions[(A, B)]
-                pair_positions[best_pair].discard((word_idx, pos))
+            print("Remaining distinct pairs will be recomputed next iteration…\n")
 
-                # 5b) Update neighbor pairs around pos
-
-                # Left neighbor: (X, A) → now (X, merged_symbol)
-                left_i = pos - 1
-                if left_i >= 0:
-                    X = symbols[left_i]
-                    old_left = (X, A)
-                    if (word_idx, left_i) in pair_positions.get(old_left, set()):
-                        pair_positions[old_left].discard((word_idx, left_i))
-                        if old_left in pair_positions and len(pair_positions[old_left]) > 0:
-                            heapq.heappush(heap, (-len(pair_positions[old_left]), old_left))
-
-                    new_left = (X, merged_symbol)
-                    pair_positions[new_left].add((word_idx, left_i))
-                    heapq.heappush(heap, (-len(pair_positions[new_left]), new_left))
-
-                # Right neighbor: (B, Y) → now (merged_symbol, Y)
-                right_i = pos + 1
-                if right_i < len(symbols):
-                    Y = symbols[right_i]
-                    old_right = (B, Y)
-                    if (word_idx, pos) in pair_positions.get(old_right, set()):
-                        pair_positions[old_right].discard((word_idx, pos))
-                        if old_right in pair_positions and len(pair_positions[old_right]) > 0:
-                            heapq.heappush(heap, (-len(pair_positions[old_right]), old_right))
-
-                    new_right = (merged_symbol, Y)
-                    pair_positions[new_right].add((word_idx, pos))
-                    heapq.heappush(heap, (-len(pair_positions[new_right]), new_right))
-
-            # 5c) If (A, B) has no remaining positions, delete it
-            if best_pair in pair_positions and not pair_positions[best_pair]:
-                del pair_positions[best_pair]
-
-            print(f"Remaining distinct pairs in heap: {len(heap)}\n")
-
-        # 6) Build final vocabulary from remaining symbols
+        # 5) After merging, collect final vocabulary from all symbols
         self.vocab.clear()
-        for seq in tokenized_corpus:
-            for sym in seq:
+        for symbols in tokenized_corpus:
+            for sym in symbols:
                 self.vocab.add(sym)
 
-        # 7) Assign IDs (preserve [PAD],[UNK],[BOS],[EOS])
-        next_id = max(self.token_to_id.values()) + 1  # should start at 4
+        # 6) Assign token IDs to each subword (preserving [PAD],[UNK],[BOS],[EOS])
+        next_id = max(self.token_to_id.values()) + 1
         for subword in sorted(self.vocab):
             if subword not in self.token_to_id:
                 self.token_to_id[subword] = next_id
