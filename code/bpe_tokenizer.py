@@ -21,7 +21,7 @@ class BPETokenizer(BaseTokenizer, ABC):
                  pre_tokenizer: PreTokenizer = None,
                  enable_bigrams: bool = True,
                  bigrams_freq_threshold: int = 10,
-                 merge_freq_threshold: int = 1):
+                 merge_freq_threshold: int = 5):
         """
         A Byte-Pair Encoding tokenizer that extends BaseTokenizer.
         Uses "<W>" as the word-begin marker to stay in sync with PreTokenizer.
@@ -30,8 +30,8 @@ class BPETokenizer(BaseTokenizer, ABC):
         super().__init__()
 
         # BPE-specific containers
-        self.pre_tokens: Dict[tuple[str], int] = {}
-        self.merge_cand: Dict[Tuple[str, str], int] = {}
+        self.corpus_dict: Dict[tuple[str], int] = {}
+        self.merge_cand: Dict[Tuple[str, str], tuple[int, set]] = {}
         self.rules: Dict[str, int] = {}
         self.vocab: Set[str] = set()
 
@@ -102,28 +102,27 @@ class BPETokenizer(BaseTokenizer, ABC):
         if self.enable_bigrams:
             pre_tokenized_sentences = self._create_bi_grams_pre_tokens(pre_tokenized_sentences)
 
-        # 3) Build tokenized_corpus and pair_positions
+        # 3) Build tokenized_corpus and possible merge dicts
         all_words = [w for line_tokens in pre_tokenized_sentences for w in line_tokens]
-
-        self._build_pre_tokens_dict(all_words=all_words)
-        logging.info(f"==== Built tokenized_corpus (total words = {len(self.pre_tokens)}) ====\n")
-
+        self._build_corpus_dict(all_words=all_words)
+        logging.info(f"==== Built tokenized_corpus (total words = {len(self.corpus_dict)}) ====\n")
+        self._build_merge_cand_dict()
         merges_done = 0
         # 4) Perform merges up to vocab_size
         while len(self.vocab) < self.vocab_size:
-            # 4a) calculate the frequencies of each possible merge and return the pair with the highest
-            best_pair, freq = self._build_merge_cand_dict()
+            # 4a) return the pair with the highest
+            best_pair, freq = self._get_best_pair()
+
             if best_pair is None or freq < self.merge_freq_threshold:
                 print(best_pair)
                 print(freq)
                 break
             # define the merge
             merged_symbol = ''.join(best_pair)
-
-            # 4b) remove the pair from the merge cand list
+            # 4b) update the corpus and merge dicts
+            self._update_corpus(best_pair)
+            # 4c) remove the pair from the merge cand list
             del self.merge_cand[best_pair]
-            # 4c) update the pre tokens dict
-            self._update_pre_tokens(best_pair)
             # 4d) update rule and vocab
             self.rules[merged_symbol] = freq
             self.vocab.add(merged_symbol)
@@ -158,7 +157,7 @@ class BPETokenizer(BaseTokenizer, ABC):
         splits = list(itertools.chain.from_iterable(splits))
         tokens = self._apply_merges_on_words(splits)
         print(tokens)
-        return [self.token_to_id[token] for token in tokens]
+        return [self.token_to_id.get(token, self.token_to_id["[UNK]"]) for token in tokens]
 
     def _apply_merges_on_words(self, words):
         possible_to_merge = True
@@ -217,36 +216,27 @@ class BPETokenizer(BaseTokenizer, ABC):
             result.append(symbols)
         return result
 
-    def _get_stats(self, ids: List[str]) -> None:
-        """
-        Count adjacent pairs in one sequence of symbols (ids)
-        and update self.merge_cand accordingly.
-        """
-        for pair in zip(ids, ids[1:]):
-            self.merge_cand[pair] = self.merge_cand.get(pair, 0) + 1
-
     def _split_to_chars(self, word: str):
-        space_to_add = None
-        if word.startswith(self.space_token):
-            space_to_add = [self.space_token]
-            word = word[len(self.space_token):]
-        splitted_word = [word] if word in SPECIAL_TOKENS else list(word)
-        return space_to_add + splitted_word if space_to_add else splitted_word
+        escape_tokens = list(SPECIAL_TOKENS) + [self.space_token]
+        escaped = sorted((re.escape(tok) for tok in escape_tokens), key=len, reverse=True)
+        group = "|".join(escaped)
+        pattern = rf"(?:{group})|."
+        return re.findall(pattern, word)
 
     def _append_special_tokens(self):
         self.vocab.update(SPECIAL_TOKENS)
 
-    def _build_pre_tokens_dict(self, all_words):
+    def _build_corpus_dict(self, all_words):
         for w in all_words:
             # get the word splitted to its most basic components (special tokens and individual chars)
             splitted_w = self._split_to_chars(w)
             # update vocab
             self.vocab.update(splitted_w)
             splited_w_as_key = tuple(splitted_w)
-            if splited_w_as_key not in self.pre_tokens:
-                self.pre_tokens[splited_w_as_key] = 0
-            freq = self.pre_tokens[splited_w_as_key]
-            self.pre_tokens[splited_w_as_key] = freq + 1
+            if splited_w_as_key not in self.corpus_dict:
+                self.corpus_dict[splited_w_as_key] = 0
+            freq = self.corpus_dict[splited_w_as_key]
+            self.corpus_dict[splited_w_as_key] = freq + 1
 
     def _create_bi_grams_pre_tokens(self, pre_tokens):
         bigram_counter = self._find_bigrams_in_pre_tokens(pre_tokens)
@@ -321,47 +311,86 @@ class BPETokenizer(BaseTokenizer, ABC):
     def _build_merge_cand_dict(self):
         most_freq_pair = None
         most_freq_pair_freq = 0
-        for key in self.pre_tokens.keys():
-            word_freq = self.pre_tokens[key]
+        for key in self.corpus_dict.keys():
+            word_freq = self.corpus_dict[key]
             word_merge_cands_pairs = [(key[i], key[i + 1]) for i in range(len(key) - 1)]
             for pair in word_merge_cands_pairs:
                 if pair not in self.merge_cand:
-                    self.merge_cand[pair] = 0
-                prev_freq = self.merge_cand[pair]
-                self.merge_cand[pair] = prev_freq + word_freq
-                if most_freq_pair_freq < self.merge_cand[pair]:
+                    self.merge_cand[pair] = (word_freq, {key})
+                else:
+                    curr_freq, pre_tokens_set = self.merge_cand[pair]
+                    pre_tokens_set.add(key)
+                    self.merge_cand[pair] = (curr_freq + word_freq, pre_tokens_set)
+                if most_freq_pair_freq < self.merge_cand[pair][0]:
                     most_freq_pair = pair
-                    most_freq_pair_freq = self.merge_cand[pair]
+                    most_freq_pair_freq = self.merge_cand[pair][0]
         return most_freq_pair, most_freq_pair_freq
 
-    def _update_pre_tokens(self, best_pair):
-        merged_symbol = ''.join(best_pair)
-        updates = {}
+    def _get_best_pair(self):
+        # best_pair, (best_freq, best_set) = max(self.merge_cand.items(), key=lambda kv: kv[1][0])
+        best_pair, (best_freq, best_set) = max(
+            self.merge_cand.items(),
+            key=lambda kv: (kv[1][0], self.space_token in kv[0])
+        )
+        return best_pair, best_freq
 
-        for key, freq in list(self.pre_tokens.items()):
-            new_key = []
+    def _update_corpus(self, best_pair):
+        _, best_set = self.merge_cand[best_pair]  # best_set is a set of tuples
+
+        for splited_word in list(best_set):
+            # splited_word is a tuple, e.g. ('<W>','t','h','i','n','k')
+            word_freq = self.corpus_dict[splited_word]
+
+            # 1) Remove splited_word from all its bigram‐lists
+            for i in range(len(splited_word) - 1):
+                key = (splited_word[i], splited_word[i + 1])
+                freq_word_list = self.merge_cand.get(key)
+                if freq_word_list is not None:
+                    merge_freq, word_lists = freq_word_list
+                    word_lists.discard(splited_word)  # safe, no KeyError
+                    merge_freq -= word_freq
+                    self.merge_cand[key] = (merge_freq, word_lists)
+
+            # 2) Delete the old entry from corpus_dict
+            del self.corpus_dict[splited_word]
+
+            # 3) Build new_key by merging best_pair inside splited_word
+            new_key_list = []
             i = 0
-            while i < len(key):
-                # Check if best_pair matches at position i
-                if i < len(key) - 1 and key[i] == best_pair[0] and key[i + 1] == best_pair[1]:
-                    new_key.append(merged_symbol)
-                    i += 2  # skip the next symbol as it's part of the merged pair
+            while i < len(splited_word):
+                if (i < len(splited_word) - 1
+                        and splited_word[i] == best_pair[0]
+                        and splited_word[i + 1] == best_pair[1]):
+
+                    merged_token = "".join(best_pair)  # e.g. "th"
+                    new_key_list.append(merged_token)
+                    i += 2
                 else:
-                    new_key.append(key[i])
+                    new_key_list.append(splited_word[i])
                     i += 1
-            new_key = tuple(new_key)
-            if new_key not in updates:
-                updates[new_key] = 0
-            updates[new_key] += freq
 
-        self.pre_tokens = updates  # Replace instead of update to avoid stale keys
+            new_key = tuple(new_key_list)  # always a tuple
 
+            # 4) Insert new_key into corpus_dict
+            self.corpus_dict[new_key] = word_freq
+
+            # 5) Add new bigram pairs from new_key into merge_cand
+            for i in range(len(new_key) - 1):
+                pair = (new_key[i], new_key[i + 1])
+                if pair not in self.merge_cand:
+                    self.merge_cand[pair] = (word_freq, {new_key})
+                else:
+                    curr_freq, pre_tokens_set = self.merge_cand[pair]
+                    if new_key not in pre_tokens_set:
+                        pre_tokens_set.add(new_key)
+                        curr_freq += word_freq
+                    self.merge_cand[pair] = (curr_freq, pre_tokens_set)
 
 import os
 
 domain_file = "../data/domain_1_sample.txt"
-# domain_file = "../data/domain_1_train.txt"
-# domain_file = "../data/small_test_data.txt"
+# # domain_file = "../data/domain_1_train.txt"
+# # domain_file = "../data/small_test_data.txt"
 output_dir = "../tokenizers"
 
 os.makedirs(output_dir, exist_ok=True)
@@ -377,7 +406,7 @@ print(f"Read {len(texts)} lines of text")
 print(f"Training BPE tokenizer with vocab size {5000}")
 tokenizer = BPETokenizer(vocab_size=5000,
                          merge_freq_threshold=5)
-#
+
 # # # 1) Normalize all texts
 # # normalized_texts = normalize_text_file(
 # #     normalizer=tokenizer.normalizer,
@@ -407,18 +436,63 @@ tokenizer.train(texts)
 end_time = time.time()
 
 print(f"train took {end_time - start_time:.4f} seconds to run.")
-#
-# # tokenizer.save("../tokenizers/sample_tokenizer.pkl")
-# # # Save the tokenizer
-# # output_path = os.path.join(output_dir, "tokenizer.pkl")
-# # print(f"Saving tokenizer to {output_path}")
-# # tokenizer.save(output_path)
-# # print(f"Tokenizer trained with {tokenizer.get_vocab_size()} tokens")
-# #
-# # # Test the tokenizer on a sample
+# # #
+# # # # tokenizer.save("../tokenizers/sample_tokenizer.pkl")
+# # # # # Save the tokenizer
+# # # # output_path = os.path.join(output_dir, "tokenizer.pkl")
+# # # # print(f"Saving tokenizer to {output_path}")
+# # # # tokenizer.save(output_path)
+# # # # print(f"Tokenizer trained with {tokenizer.get_vocab_size()} tokens")
+# # # #
+# # # # # Test the tokenizer on a sample
 if texts:
     # sample_text = texts[0].strip()
     sample_text = "I went to empire state building yesterday and it was amazing."
+    print("\nExample encoding/decoding:")
+    print(f"Original text: {sample_text}")
+
+    encoded = tokenizer.encode(sample_text)
+    print(encoded)
+    print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
+
+    decoded = tokenizer.decode(encoded)
+    print(f"Decoded: {decoded}")
+
+    sample_text = "loved casulty 1909 last night! horribley gory though. some parts made me sad  there was this 13 year old girl working as a prostitute T_T"
+    print("\nExample encoding/decoding:")
+    print(f"Original text: {sample_text}")
+
+    encoded = tokenizer.encode(sample_text)
+    print(encoded)
+    print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
+
+    decoded = tokenizer.decode(encoded)
+    print(f"Decoded: {decoded}")
+
+    sample_text = "@tommcfly VocÃª Ã© bonito."
+    print("\nExample encoding/decoding:")
+    print(f"Original text: {sample_text}")
+
+    encoded = tokenizer.encode(sample_text)
+    print(encoded)
+    print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
+
+    decoded = tokenizer.decode(encoded)
+    print(f"Decoded: {decoded}")
+
+
+    sample_text = "@gsfrier  it is sad  when you leaving?"
+    print("\nExample encoding/decoding:")
+    print(f"Original text: {sample_text}")
+
+    encoded = tokenizer.encode(sample_text)
+    print(encoded)
+    print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
+
+    decoded = tokenizer.decode(encoded)
+    print(f"Decoded: {decoded}")
+
+    sample_text = "@mmm_gash Oh, don't you just feel special  I hope her &quot;pussy is hanging out&quot;."
     print("\nExample encoding/decoding:")
     print(f"Original text: {sample_text}")
 
