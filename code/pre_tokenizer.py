@@ -1,6 +1,6 @@
 from functools import partial
 from typing import List
-from utils import run_data_job_in_parallel
+from utils import run_data_job_in_parallel, logging
 from patterns_and_dicts import SPLITER_REGEX, BEGINNING_OF_WORD_MARK, HASHTAG_TOKEN, USER_TOKEN, URL_TOKEN
 import re
 
@@ -15,8 +15,15 @@ def pre_tokenize_text_file(pre_tokenizer, batch_of_text: tuple) -> List[List[str
     Returns:
         A list of lists of pre‐tokens for each input string.
     """
+    logging.info(f"==== Starting pre tokenization of text (total lines = {len(batch_of_text)}) ====\n")
+    logging.info(f"==== pre tokenization flags ====\n"
+                 f"\tsplit_punctuation={pre_tokenizer.split_punctuation}\n"
+                 f"\tcustom_spliter={pre_tokenizer.custom_spliter}\n"
+                 f"\ttrain_mode={pre_tokenizer.train_mode}\n")
     text, start_idx = batch_of_text
-    return [pre_tokenizer.pre_tokenize_str(text=t) for t in text]
+    pre_tokenized_text = [pre_tokenizer.pre_tokenize_str(text=t) for t in text]
+    logging.info(f"==== Finished pre tokenization ====\n")
+    return pre_tokenized_text
 
 
 class PreTokenizer:
@@ -136,9 +143,13 @@ class PreTokenizer:
 #                         replace_html_tags=True)
 # text = normalize_text_file(normalizer, (text_file, 0))
 
-#text = "[USER] i had that exp yesterday...movie and dinner afteer a long long time...and let me tell you...it is not that great!"
+# text = "[USER] i had that exp yesterday...movie and dinner afteer a long long time...and let me tell you...it is not that great!"
 # pre_tokenizer = PreTokenizer(train_mode=False,
 #                              split_punctuation=True)
+#
+# tokenized_text = pre_tokenizer.pre_tokenize_str(text=text)
+# print(tokenized_text)
+
 # pre_tokenize_text = pre_tokenize_text_file(pre_tokenizer, (text, 0))
 # print(len(pre_tokenize_text))
 # print(pre_tokenize_text[15])

@@ -1,7 +1,7 @@
 import unicodedata
 from typing import Literal, Optional, List
 import re
-from utils import run_data_job_in_parallel
+from utils import run_data_job_in_parallel, logging
 from patterns_and_dicts import *
 from functools import partial
 
@@ -14,8 +14,25 @@ def normalize_text_file(normalizer, batch_of_text: tuple) -> List[str]:
         normalizer: Normalizer instance.
     Returns: The list of the normalized text strings
     """
+    logging.info(f"==== Starting normalization of text (total lines = {len(batch_of_text)}) ====\n")
+
+    logging.info(f"==== normalization flags ====\n"
+                 f"\tremove_needless_ws={normalizer.remove_needless_ws}\n"
+                 f"\tremove_needless_ws_pattern={normalizer.remove_needless_ws_pattern}\n"
+                 f"\tlower_case={normalizer.lower_case}\n"
+                 f"\tremove_needless_punctuation={normalizer.remove_needless_punctuation}\n"
+                 f"\tremove_needless_punctuation_pattern={normalizer.remove_needless_punctuation_pattern}\n"
+                 f"\tremove_accents={normalizer.remove_accents}\n"
+                 f"\tunicode_normalization={normalizer.unicode_normalization}\n"
+                 f"\texpand_contractions={normalizer.expand_contractions}\n"
+                 f"\treplace_urls={normalizer.replace_urls}\n"
+                 f"\treplace_usernames={normalizer.replace_usernames}\n"
+                 f"\treplace_html_tags={normalizer.replace_html_tags}\n"
+                 f"\treplace_hashtag={normalizer.replace_hashtag}\n")
     text, start_idx = batch_of_text
-    return [normalizer.normalize_text(text=t) for t in text]
+    normalized_text = [normalizer.normalize_text(text=t) for t in text]
+    logging.info(f"==== Finished normalization ====\n")
+    return normalized_text
 
 
 class Normalizer:

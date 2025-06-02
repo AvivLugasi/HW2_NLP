@@ -18,7 +18,7 @@ class BaseTokenizer(ABC):
             "[PAD]": 0,
             "[UNK]": 1,
             "[BOS]": 2,
-            "[EOS]": 3,
+            "[EOS]": 3
         }
 
         # Initialize special tokens in the mappings

@@ -1,5 +1,6 @@
 import multiprocessing as mp
 from typing import TypeVar, Sequence
+import logging
 
 T = TypeVar('T')
 
@@ -29,3 +30,11 @@ def run_data_job_in_parallel(data: Sequence[T],
     results.sort(key=lambda x: x[0])
 
     return results
+
+
+# Configure the logger
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)

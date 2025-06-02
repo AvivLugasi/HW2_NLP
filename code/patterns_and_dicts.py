@@ -6,7 +6,7 @@ def remove_punctuation_replacer(match_obj):
     Otherwise (i.e., match was multiple dots), return the string '... '.
     """
     # match_obj.group(1) will be None if the match was multiple dots ('.{2,}')
-    return match_obj.group(1) if match_obj.group(1) else "... "
+    return match_obj.group(1) if match_obj.group(1) else ". "
 
 
 # Remove all whitespace and replace with a single space
@@ -644,3 +644,7 @@ BEGINNING_OF_WORD_MARK = "<W>"
 
 # spliting text strings to pre tokens predefined regex
 SPLITER_REGEX = r"""(@\w+|#\w+|https?://\S+|\d+|[^\w\s]|[\w']+|\s+)"""
+
+
+# special Tokens set
+SPECIAL_TOKENS = {URL_TOKEN, USER_TOKEN, HASHTAG_TOKEN}
