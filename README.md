@@ -61,7 +61,7 @@ This will save your trained tokenizer to the specified output directory.
 Train the NER model using your tokenizer:
 
 ```bash
-python train_ner_model.py --tokenizer_path tokenizers/tokenizer.pkl --train_file data/ner_data/train_1_binary.tagged --dev_file data/ner_data/dev_1_binary.tagged
+python train_ner_model.py --tokenizer_path tokenizers/tokenizer_2.pkl --train_file data/ner_data/train_1_binary.tagged --dev_file data/ner_data/dev_1_binary.tagged
 ```
 
 ### Step 4: Evaluate and Experiment
@@ -107,7 +107,7 @@ This approach handles cases where tokenization doesn't align with word boundarie
 You can test your tokenizer manually using the test script:
 
 ```bash
-python test_tokenizer.py --tokenizer_path tokenizers/tokenizer.pkl --train_file data/domain_1.txt --test_file data/domain_2.txt
+python test_tokenizer.py --tokenizer_path tokenizers/tokenizer_2.pkl --train_file data/domain_1.txt --test_file data/domain_2.txt
 ```
 
 This will print efficiency, reconstruction, and encoding/decoding examples for your tokenizer.
