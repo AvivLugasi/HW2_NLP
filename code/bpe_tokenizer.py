@@ -35,14 +35,14 @@ class BPETokenizer(BaseTokenizer, ABC):
         self.rules: Dict[str, int] = {}
         self.vocab: Set[str] = set()
 
-        # append special tokens
-        self._append_special_tokens()
-
         # How many merge-iterations to run
         self.vocab_size = vocab_size
 
         # Marker for "beginning of word" (must match PreTokenizer's marker)
         self.space_token = "<W>"
+
+        # append special tokens
+        self._append_special_tokens()
 
         # Normalizer
         if normalizer is None:
@@ -104,6 +104,7 @@ class BPETokenizer(BaseTokenizer, ABC):
 
         # 3) Build tokenized_corpus and possible merge dicts
         all_words = [w for line_tokens in pre_tokenized_sentences for w in line_tokens]
+
         self._build_corpus_dict(all_words=all_words)
         logging.info(f"==== Built tokenized_corpus (total words = {len(self.corpus_dict)}) ====\n")
         self._build_merge_cand_dict()
@@ -225,11 +226,14 @@ class BPETokenizer(BaseTokenizer, ABC):
 
     def _append_special_tokens(self):
         self.vocab.update(SPECIAL_TOKENS)
+        self.vocab.update(self.space_token)
 
     def _build_corpus_dict(self, all_words):
         for w in all_words:
             # get the word splitted to its most basic components (special tokens and individual chars)
             splitted_w = self._split_to_chars(w)
+            # update vocab based on unique pre tokens base components (special tokens and individual chars)
+            self.vocab.update(splitted_w)
             # update vocab
             self.vocab.update(splitted_w)
             splited_w_as_key = tuple(splitted_w)
@@ -388,11 +392,11 @@ class BPETokenizer(BaseTokenizer, ABC):
 
 # import os
 #
-# # domain_file = "../data/domain_1_sample.txt"
-# domain_file = "../data/domain_2_train.txt"
+# domain_file = "../data/domain_1_sample.txt"
+# #domain_file = "../data/domain_2_train.txt"
 # # # domain_file = "../data/small_test_data.txt"
 # output_dir = "../tokenizers"
-#
+# #
 # os.makedirs(output_dir, exist_ok=True)
 #
 # # Read domain data
@@ -406,45 +410,45 @@ class BPETokenizer(BaseTokenizer, ABC):
 # print(f"Training BPE tokenizer with vocab size {5000}")
 # tokenizer = BPETokenizer(vocab_size=5000,
 #                          merge_freq_threshold=5)
-#
-# # # # 1) Normalize all texts
-# # # normalized_texts = normalize_text_file(
-# # #     normalizer=tokenizer.normalizer,
-# # #     batch_of_text=(texts, 0)
-# # # )
-# # # logging.info("==== Done Normalizing ====\n")
 # #
-# # # with open("../data/domain_1_sample_normalized.txt", "w", encoding="utf8") as f_out:
-# # #     for sentence_tokens in normalized_texts:
-# # #         f_out.write(sentence_tokens+"\n")
-# #
-# # # 2) Pre-tokenize in train_mode
-# # # tokenizer.pre_tokenizer.train_mode = True
-# # # pre_tokenized_sentences = pre_tokenize_text_file(
-# # #     pre_tokenizer=tokenizer.pre_tokenizer,
-# # #     batch_of_text=(normalized_texts, 0)
-# # # )
-# # # logging.info("==== Done Pre-tokenize ====\n")
-# # # with open("../data/domain_1_sample_pre_tokenized.txt", "w", encoding="utf8") as f_out:
-# # #     for sentence_tokens in pre_tokenized_sentences:
-# # #         f_out.write(" ".join(sentence_tokens) + "\n")
-# #
+# # # # # 1) Normalize all texts
+# # # # normalized_texts = normalize_text_file(
+# # # #     normalizer=tokenizer.normalizer,
+# # # #     batch_of_text=(texts, 0)
+# # # # )
+# # # # logging.info("==== Done Normalizing ====\n")
+# # #
+# # # # with open("../data/domain_1_sample_normalized.txt", "w", encoding="utf8") as f_out:
+# # # #     for sentence_tokens in normalized_texts:
+# # # #         f_out.write(sentence_tokens+"\n")
+# # #
+# # # # 2) Pre-tokenize in train_mode
+# # # # tokenizer.pre_tokenizer.train_mode = True
+# # # # pre_tokenized_sentences = pre_tokenize_text_file(
+# # # #     pre_tokenizer=tokenizer.pre_tokenizer,
+# # # #     batch_of_text=(normalized_texts, 0)
+# # # # )
+# # # # logging.info("==== Done Pre-tokenize ====\n")
+# # # # with open("../data/domain_1_sample_pre_tokenized.txt", "w", encoding="utf8") as f_out:
+# # # #     for sentence_tokens in pre_tokenized_sentences:
+# # # #         f_out.write(" ".join(sentence_tokens) + "\n")
+# # #
 # import time
 #
 # start_time = time.time()
 # tokenizer.train(texts)
 # end_time = time.time()
-#
-# print(f"train took {end_time - start_time:.4f} seconds to run.")
-#
-# # tokenizer.save("../tokenizers/tokenizer_2.pkl")
-# # Save the tokenizer
-# output_path = os.path.join(output_dir, "tokenizer_2.pkl")
-# print(f"Saving tokenizer to {output_path}")
-# tokenizer.save(output_path)
-# print(f"Tokenizer trained with {tokenizer.get_vocab_size()} tokens")
-#
-# # # # # # Test the tokenizer on a sample
+# #
+# # print(f"train took {end_time - start_time:.4f} seconds to run.")
+# #
+# # # tokenizer.save("../tokenizers/tokenizer_2.pkl")
+# # # Save the tokenizer
+# # output_path = os.path.join(output_dir, "tokenizer_2.pkl")
+# # print(f"Saving tokenizer to {output_path}")
+# # tokenizer.save(output_path)
+# # print(f"Tokenizer trained with {tokenizer.get_vocab_size()} tokens")
+# #
+# # # # # # # Test the tokenizer on a sample
 # if texts:
 #     sample_text = texts[0].strip()
 #     print("\nExample encoding/decoding:")
@@ -456,48 +460,48 @@ class BPETokenizer(BaseTokenizer, ABC):
 #
 #     decoded = tokenizer.decode(encoded)
 #     print(f"Decoded: {decoded}")
-
-    # sample_text = "loved casulty 1909 last night! horribley gory though. some parts made me sad  there was this 13 year old girl working as a prostitute T_T"
-    # print("\nExample encoding/decoding:")
-    # print(f"Original text: {sample_text}")
-    #
-    # encoded = tokenizer.encode(sample_text)
-    # print(encoded)
-    # print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
-    #
-    # decoded = tokenizer.decode(encoded)
-    # print(f"Decoded: {decoded}")
-    #
-    # sample_text = "@tommcfly VocÃª Ã© bonito."
-    # print("\nExample encoding/decoding:")
-    # print(f"Original text: {sample_text}")
-    #
-    # encoded = tokenizer.encode(sample_text)
-    # print(encoded)
-    # print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
-    #
-    # decoded = tokenizer.decode(encoded)
-    # print(f"Decoded: {decoded}")
-    #
-    #
-    # sample_text = "@gsfrier  it is sad  when you leaving?"
-    # print("\nExample encoding/decoding:")
-    # print(f"Original text: {sample_text}")
-    #
-    # encoded = tokenizer.encode(sample_text)
-    # print(encoded)
-    # print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
-    #
-    # decoded = tokenizer.decode(encoded)
-    # print(f"Decoded: {decoded}")
-    #
-    # sample_text = "@mmm_gash Oh, don't you just feel special  I hope her &quot;pussy is hanging out&quot;."
-    # print("\nExample encoding/decoding:")
-    # print(f"Original text: {sample_text}")
-    #
-    # encoded = tokenizer.encode(sample_text)
-    # print(encoded)
-    # print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
-    #
-    # decoded = tokenizer.decode(encoded)
-    # print(f"Decoded: {decoded}")
+#
+#     sample_text = "loved casulty 1909 last night! horribley gory though. some parts made me sad  there was this 13 year old girl working as a prostitute T_T"
+#     print("\nExample encoding/decoding:")
+#     print(f"Original text: {sample_text}")
+#
+#     encoded = tokenizer.encode(sample_text)
+#     print(encoded)
+#     print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
+#
+#     decoded = tokenizer.decode(encoded)
+#     print(f"Decoded: {decoded}")
+#
+#     sample_text = "@tommcfly VocÃª Ã© bonito."
+#     print("\nExample encoding/decoding:")
+#     print(f"Original text: {sample_text}")
+#
+#     encoded = tokenizer.encode(sample_text)
+#     print(encoded)
+#     print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
+#
+#     decoded = tokenizer.decode(encoded)
+#     print(f"Decoded: {decoded}")
+#
+#
+#     sample_text = "@gsfrier  it is sad  when you leaving?"
+#     print("\nExample encoding/decoding:")
+#     print(f"Original text: {sample_text}")
+#
+#     encoded = tokenizer.encode(sample_text)
+#     print(encoded)
+#     print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
+#
+#     decoded = tokenizer.decode(encoded)
+#     print(f"Decoded: {decoded}")
+#
+#     sample_text = "@mmm_gash Oh, don't you just feel special  I hope her &quot;pussy is hanging out&quot;."
+#     print("\nExample encoding/decoding:")
+#     print(f"Original text: {sample_text}")
+#
+#     encoded = tokenizer.encode(sample_text)
+#     print(encoded)
+#     print(f"Encoded: {encoded[:50]}{'...' if len(encoded) > 50 else ''}")
+#
+#     decoded = tokenizer.decode(encoded)
+#     print(f"Decoded: {decoded}")
