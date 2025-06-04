@@ -376,7 +376,8 @@ class BPETokenizer(BaseTokenizer, ABC):
             new_key = tuple(new_key_list)  # always a tuple
 
             # 4) Insert new_key into corpus_dict
-            self.corpus_dict[new_key] = word_freq
+            old_count = self.corpus_dict.get(new_key, 0)
+            self.corpus_dict[new_key] = old_count + word_freq
 
             # 5) Add new bigram pairs from new_key into merge_cand
             for i in range(len(new_key) - 1):
