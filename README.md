@@ -51,7 +51,7 @@ You're free to experiment with different BPE variations and optimizations.
 Train your tokenizer using the provided script:
 
 ```bash
-python train_tokenizer.py --domain_file data/domain_1.txt --output_dir tokenizers --vocab_size 5000
+python code/train_tokenizer.py --domain_file data/domain_1_train.txt --output_dir tokenizers --vocab_size 5000
 ```
 
 This will save your trained tokenizer to the specified output directory.
@@ -61,7 +61,7 @@ This will save your trained tokenizer to the specified output directory.
 Train the NER model using your tokenizer:
 
 ```bash
-python train_ner_model.py --tokenizer_path tokenizers/tokenizer_2.pkl --train_file data/ner_data/train_1_binary.tagged --dev_file data/ner_data/dev_1_binary.tagged
+python code/train_ner_model.py --tokenizer_path tokenizers/tokenizer.pkl --train_file data/ner_data/train_1_binary.tagged --dev_file data/ner_data/dev_1_binary.tagged
 ```
 
 ### Step 4: Evaluate and Experiment

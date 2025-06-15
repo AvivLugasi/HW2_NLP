@@ -1,6 +1,5 @@
 import unicodedata
 from typing import Literal, Optional, List
-import re
 from utils import run_data_job_in_parallel, logging
 from patterns_and_dicts import *
 from functools import partial
@@ -14,7 +13,7 @@ def normalize_text_file(normalizer, batch_of_text: tuple) -> List[str]:
         normalizer: Normalizer instance.
     Returns: The list of the normalized text strings
     """
-    logging.info(f"==== Starting normalization of text (total lines = {len(batch_of_text)}) ====\n")
+    logging.info(f"==== Starting normalization of text (total lines = {len(batch_of_text[0])}) ====\n")
 
     logging.info(f"==== normalization flags ====\n"
                  f"\tremove_needless_ws={normalizer.remove_needless_ws}\n"
@@ -28,7 +27,9 @@ def normalize_text_file(normalizer, batch_of_text: tuple) -> List[str]:
                  f"\treplace_urls={normalizer.replace_urls}\n"
                  f"\treplace_usernames={normalizer.replace_usernames}\n"
                  f"\treplace_html_tags={normalizer.replace_html_tags}\n"
-                 f"\treplace_hashtag={normalizer.replace_hashtag}\n")
+                 f"\treplace_hashtag={normalizer.replace_hashtag}\n"
+                 f"\tremove_repeated_letters={normalizer.remove_repeated_letters}\n"
+                 f"\tremove_suffix_and_prefix={normalizer.remove_suffix_and_prefix}\n")
     text, start_idx = batch_of_text
     normalized_text = [normalizer.normalize_text(text=t) for t in text]
     logging.info(f"==== Finished normalization ====\n")
@@ -49,7 +50,9 @@ class Normalizer:
                  replace_urls: bool = False,
                  replace_usernames: bool = False,
                  replace_html_tags: bool = False,
-                 replace_hashtag: bool = False
+                 replace_hashtag: bool = False,
+                 remove_repeated_letters: bool = False,
+                 remove_suffix_and_prefix: bool = False
                  ):
         """
         Args: remove_needless_ws: Weather to replace all whitespaces occurrences with given pattern.
@@ -64,6 +67,9 @@ class Normalizer:
         USER] replace_html_tags: whether to replace html tags with their view form (e.g "&lt;" -> "<")
         replace_hashtag: whether to replace hashtag tags with special token [Hashtag] and seperate it from the
         following entitiy
+        remove_repeated_letters: Replace repeated letters from words with letters that repeat 3 times or more,
+        with one occurrence of the letter. e.g: hellooooo -> hello
+        remove_suffix_and_prefix: Whether to remove suffix and prefix of urls.
         """
         self.remove_needless_ws = remove_needless_ws
         self.remove_needless_ws_pattern = remove_needless_ws_pattern \
@@ -81,6 +87,8 @@ class Normalizer:
         self.replace_usernames = replace_usernames
         self.replace_html_tags = replace_html_tags
         self.replace_hashtag = replace_hashtag
+        self.remove_repeated_letters = remove_repeated_letters
+        self.remove_suffix_and_prefix = remove_suffix_and_prefix
 
     def normalize_batch(self, text:List[str]) -> List[str]:
         """
@@ -103,6 +111,8 @@ class Normalizer:
             text = _replace_html_tags(text=text)
         if self.replace_urls:
             text = _replace_urls(text=text)
+        if self.remove_suffix_and_prefix:
+            text = _remove_suffix_and_prefix(text=text)
         if self.replace_usernames:
             text = _replace_usernames(text=text)
         if self.replace_hashtag:
@@ -115,6 +125,8 @@ class Normalizer:
             )
         if self.lower_case:
             text = _lower_case_text(text=text, mode=self.lower_case)
+        if self.remove_repeated_letters:
+            text = _remove_repeated_letters(text=text)
         if self.expand_contractions:
             text = _contractions_expender(text=text)
         if self.remove_needless_punctuation:
@@ -311,6 +323,22 @@ def _replace_hashtags(text: str) -> str:
 
     hashtag_pattern = re.compile(HASHTAG_RE)
     return hashtag_pattern.sub(_hashtag_replacer, text)
+
+
+def _remove_repeated_letters(text: str) -> str:
+    """
+    Replace repeated letters from words with letters that repeat 3 times or more,
+    with one occurrence of the letter. e.g: hellooooo -> hello
+    Args:
+        text: String of text
+    Returns: text with one occurrence of the repeated letter
+
+    """
+    return re.sub(REPEATED_WORD_PATTERN, REPEATED_REPLACEMENT, text)
+
+
+def _remove_suffix_and_prefix(text: str) -> str:
+    return URL_SUFFIX_PREFIX_PATTERN.sub(clean_url, text)
 
 # text_file = []
 # with open("../data/small_test_data.txt", 'r', encoding='utf-8') as f:

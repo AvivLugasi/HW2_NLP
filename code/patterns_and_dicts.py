@@ -1,4 +1,7 @@
 # Function to replace repeated punctuation
+import re
+
+
 def remove_punctuation_replacer(match_obj):
     """
     Replacer for REMOVE_PUNCTUATION_PATTERN.
@@ -18,6 +21,25 @@ REMOVE_PUNCTUATION_PATTERN = (
     r'([!\"#$%&\'()*+,\-/:;<=>?@[\\\]^_`{|}~])\1+|\.{2,}',
     remove_punctuation_replacer
 )
+
+# Pattern: letter repeated 3 or more times
+REPEATED_WORD_PATTERN = r'([a-zA-Z])\1{2,}'
+
+# Replace with a single occurrence of the letter
+REPEATED_REPLACEMENT = r'\1'
+
+# Pattern to match URLs with optional prefixes and suffixes
+URL_SUFFIX_PREFIX_PATTERN = re.compile(
+    r'(https?://|ftp://|www\.)?([a-zA-Z0-9\-]+)(\.(com|org|net|co\.uk|io|edu))?'
+)
+
+
+def clean_url(match):
+    # match groups:
+    # 1: prefix (like http://)
+    # 2: domain name (like example)
+    # 3: suffix (like .com)
+    return match.group(2)  # return only the domain without prefix/suffix
 
 # dict of common contractions in english and their long form
 CONTRACTIONS_DICT = \
@@ -667,18 +689,19 @@ STOP_WORDS = (
     "z",
     "za", "zero", "zm", "zr", "hey")
 
-DETERMINERS = ("a", "few", "little", "all", "an", "another", "any", "anybody", "anyone", "anything", "anywhere",
-               "both", "certain", "each", "either", "enough", "every", "everybody", "everyone", "everything",
-               "everywhere",
-               "few", "fewer", "fewest", "last", "least", "less", "many", "more", "most", "much",
-               "neither", "next", "no", "no one", "nobody", "none", "nothing", "nowhere", "once", "one", "said",
-               "several",
-               "some", "somebody", "something", "somewhere", "sufficient", "that", "the", "these", "this", "those",
-               "three",
-               "thrice", "twice", "two", "us", "various", "we", "what", "whatever", "which", "whichever", "you", "zero")
+DETERMINERS = (
+"a", "and", "or", "few", "little", "all", "an", "another", "any", "anybody", "anyone", "anything", "anywhere",
+"both", "certain", "each", "either", "enough", "every", "everybody", "everyone", "everything",
+"everywhere",
+"few", "fewer", "fewest", "last", "least", "less", "many", "more", "most", "much",
+"neither", "next", "no", "no one", "nobody", "none", "nothing", "nowhere", "once", "one", "said",
+"several",
+"some", "somebody", "something", "somewhere", "sufficient", "that", "the", "these", "this", "those",
+"three",
+"thrice", "twice", "two", "us", "various", "we", "what", "whatever", "which", "whichever", "you", "zero")
 
 # regex for detecting any type of url
-URL_RE = r'(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})'
+URL_RE = r'(f?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})'
 # url token
 URL_TOKEN = "[URL]"
 
@@ -697,6 +720,9 @@ BEGINNING_OF_WORD_MARK = "<W>"
 
 # spliting text strings to pre tokens predefined regex
 SPLITER_REGEX = r"""(@\w+|#\w+|https?://\S+|\d+|[^\w\s]|[\w']+|\s+)"""
+
+# spliting text strings to pre tokens based on GPT-4 pre tokens split regex
+GPT4_SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
 
 # special Tokens set
 SPECIAL_TOKENS = {URL_TOKEN, USER_TOKEN, HASHTAG_TOKEN}

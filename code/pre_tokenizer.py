@@ -2,7 +2,7 @@ from functools import partial
 from typing import List
 from utils import run_data_job_in_parallel, logging
 from patterns_and_dicts import SPLITER_REGEX, BEGINNING_OF_WORD_MARK, HASHTAG_TOKEN, USER_TOKEN, URL_TOKEN
-import re
+import regex as re
 
 
 def pre_tokenize_text_file(pre_tokenizer, batch_of_text: tuple) -> List[List[str]]:
@@ -15,7 +15,7 @@ def pre_tokenize_text_file(pre_tokenizer, batch_of_text: tuple) -> List[List[str
     Returns:
         A list of lists of pre‐tokens for each input string.
     """
-    logging.info(f"==== Starting pre tokenization of text (total lines = {len(batch_of_text)}) ====\n")
+    logging.info(f"==== Starting pre tokenization of text (total lines = {len(batch_of_text[0])}) ====\n")
     logging.info(f"==== pre tokenization flags ====\n"
                  f"\tsplit_punctuation={pre_tokenizer.split_punctuation}\n"
                  f"\tcustom_spliter={pre_tokenizer.custom_spliter}\n"
@@ -71,7 +71,17 @@ class PreTokenizer:
         """
         # 1) If custom_spliter is provided, just use it:
         if self.custom_spliter:
-            return re.findall(self.custom_spliter, text)
+            compiled_pattern = re.compile(self.custom_spliter)
+            raw_tokens = re.findall(compiled_pattern, text)
+            pre_tokens = []
+            for raw_token in raw_tokens:
+                if raw_token[0].isalpha():
+                    pre_tokens.append(BEGINNING_OF_WORD_MARK + raw_token)
+                elif raw_token.startswith(" "):
+                    pre_tokens.append(BEGINNING_OF_WORD_MARK + raw_token[1:])
+                else:
+                    pre_tokens.append(raw_token)
+            return pre_tokens
 
         # 2) Otherwise, split on whitespace first:
         raw_tokens = text.split()  # e.g. ["hello-world!", "I’m", "fine."]
@@ -143,9 +153,12 @@ class PreTokenizer:
 #                         replace_html_tags=True)
 # text = normalize_text_file(normalizer, (text_file, 0))
 
-# text = "[USER] i had that exp yesterday...movie and dinner afteer a long long time...and let me tell you...it is not that great!"
+# text = "hUh...i                 dONt likE hiM...S Why dO i fEEL SO...diSSAPOiNtEd???  i thiNk i NEEd tO bE AWAy 4RM tHE COMPUtER fOR AWhilE...lAtES"
+#
+# GPT4_SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
 # pre_tokenizer = PreTokenizer(train_mode=False,
-#                              split_punctuation=True)
+#                              split_punctuation=True,
+#                              custom_spliter=GPT4_SPLIT_PATTERN)
 #
 # tokenized_text = pre_tokenizer.pre_tokenize_str(text=text)
 # print(tokenized_text)

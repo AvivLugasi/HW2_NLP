@@ -11,7 +11,7 @@ from collections import Counter
 
 from utils import logging
 
-from patterns_and_dicts import SPECIAL_TOKENS, DETERMINERS
+from patterns_and_dicts import SPECIAL_TOKENS, DETERMINERS, GPT4_SPLIT_PATTERN
 
 
 class BPETokenizer(BaseTokenizer, ABC):
@@ -19,7 +19,7 @@ class BPETokenizer(BaseTokenizer, ABC):
                  vocab_size: int = 10000,
                  normalizer: Normalizer = None,
                  pre_tokenizer: PreTokenizer = None,
-                 enable_bigrams: bool = True,
+                 enable_bigrams: bool = False,
                  bigrams_freq_threshold: int = 10,
                  merge_freq_threshold: int = 5):
         """
@@ -46,15 +46,29 @@ class BPETokenizer(BaseTokenizer, ABC):
 
         # Normalizer
         if normalizer is None:
+            # normalizer = Normalizer(
+            #     unicode_normalization='NFKD',
+            #     lower_case="TITLE CASE + STOP WORDS",
+            #     remove_accents=True,
+            #     expand_contractions=True,
+            #     replace_urls=False,
+            #     replace_usernames=False,
+            #     replace_hashtag=True,
+            #     replace_html_tags=True,
+            #     remove_repeated_letters=True,
+            #     remove_suffix_and_prefix=True
+            # )
             normalizer = Normalizer(
-                unicode_normalization='NFKD',
-                lower_case="TITLE CASE + STOP WORDS",
-                remove_accents=True,
-                expand_contractions=True,
-                replace_urls=True,
-                replace_usernames=True,
-                replace_hashtag=True,
-                replace_html_tags=True
+                unicode_normalization=None,
+                lower_case=None,
+                remove_accents=False,
+                expand_contractions=False,
+                replace_urls=False,
+                replace_usernames=False,
+                replace_hashtag=False,
+                replace_html_tags=False,
+                remove_repeated_letters=True,
+                remove_suffix_and_prefix=True
             )
         self.normalizer = normalizer
 
@@ -62,7 +76,8 @@ class BPETokenizer(BaseTokenizer, ABC):
         if pre_tokenizer is None:
             pre_tokenizer = PreTokenizer(
                 train_mode=True,
-                split_punctuation=True
+                split_punctuation=True,
+                custom_spliter=GPT4_SPLIT_PATTERN
             )
         self.pre_tokenizer = pre_tokenizer
 
@@ -98,6 +113,7 @@ class BPETokenizer(BaseTokenizer, ABC):
             pre_tokenizer=self.pre_tokenizer,
             batch_of_text=(normalized_texts, 0)
         )
+
         logging.info("==== Done Pre-tokenize ====\n")
         if self.enable_bigrams:
             pre_tokenized_sentences = self._create_bi_grams_pre_tokens(pre_tokenized_sentences)
@@ -106,7 +122,7 @@ class BPETokenizer(BaseTokenizer, ABC):
         all_words = [w for line_tokens in pre_tokenized_sentences for w in line_tokens]
 
         self._build_corpus_dict(all_words=all_words)
-        logging.info(f"==== Built tokenized_corpus (total words = {len(self.corpus_dict)}) ====\n")
+        logging.info(f"==== Built tokenized_corpus (total words = {len(all_words)}) ====\n")
         self._build_merge_cand_dict()
         merges_done = 0
         # 4) Perform merges up to vocab_size
@@ -129,7 +145,6 @@ class BPETokenizer(BaseTokenizer, ABC):
             self.vocab.add(merged_symbol)
             merges_done += 1
             logging.info(f"--- Merge #{merges_done}: {best_pair} → '{merged_symbol}' (freq={freq})")
-            logging.info("Remaining distinct pairs will be recomputed next iteration…\n")
 
         # 6) Assign token IDs to each subword (preserving [PAD],[UNK],[BOS],[EOS])
         next_id = max(self.token_to_id.values()) + 1
@@ -140,7 +155,7 @@ class BPETokenizer(BaseTokenizer, ABC):
                 next_id += 1
 
         logging.info(
-            f"==== Finished BPE training: {merges_done} merges done, final vocab size = {len(self.vocab) + 4} (including special tokens) ====\n")
+            f"==== Finished BPE training: {merges_done} merges done, final vocab size = {len(self.vocab)} (including special tokens) ====\n")
 
     def encode(self, text: str) -> List[int]:
         """
@@ -164,6 +179,19 @@ class BPETokenizer(BaseTokenizer, ABC):
         possible_to_merge = True
         while possible_to_merge and len(words) > 1:
             word_merge_cands_pairs = [(words[i], words[i + 1], i) for i in range(len(words) - 1)]
+            # # find the pair with the lowest merge index
+            # pair = min(word_merge_cands_pairs, key=lambda p: self.rules.get("".join(p[:2]), float("inf")))
+            # # subtle: if there are no more merges available, the key will
+            # # result in an inf for every single pair, and the min will be
+            # # just the first pair in the list, arbitrarily
+            # # we can detect this terminating case by a membership check
+            # if "".join(pair[:2]) not in self.rules:
+            #     possible_to_merge = False
+            # else:
+            #     # otherwise let's merge the best pair (lowest merge index)
+            #     merge = "".join(pair[:2])
+            #     index = pair[-1]
+            #     words = words[:index] + [merge] + words[index + 2:]
             for pair in word_merge_cands_pairs:
                 if "".join(pair[:2]) in self.rules.keys():
                     merge = "".join(pair[:2])
@@ -198,43 +226,37 @@ class BPETokenizer(BaseTokenizer, ABC):
 
         return reconstructed.strip()
 
-    def initial_spliter(self, text: str) -> List[List[str]]:
-        """
-        Given a raw text string, normalize & pre-tokenize, then return a nested list
-        of symbol-lists for each token:
-          e.g. "Hello world" → [["<W>","H","e","l","l","o"], ["<W>","w","o","r","l","d"]]
-        """
-        normalized = self.normalizer.normalize_text(text=text)
-        self.pre_tokenizer.train_mode = True
-        pre_tokens = self.pre_tokenizer.pre_tokenize_str(text=normalized)
-
-        result: List[List[str]] = []
-        for tok in pre_tokens:
-            if tok.startswith(self.space_token):
-                symbols = [self.space_token] + list(tok[len(self.space_token):])
-            else:
-                symbols = list(tok)
-            result.append(symbols)
-        return result
-
     def _split_to_chars(self, word: str):
-        escape_tokens = list(SPECIAL_TOKENS) + [self.space_token]
+        escape_tokens = list(SPECIAL_TOKENS) + [self.space_token] + list(self.special_tokens.keys())
         escaped = sorted((re.escape(tok) for tok in escape_tokens), key=len, reverse=True)
         group = "|".join(escaped)
         pattern = rf"(?:{group})|."
-        return re.findall(pattern, word)
+        tokens = re.findall(pattern, word)
+
+        # Post-process: merge <W> with the following token
+        merged = []
+        skip = False
+        for i in range(len(tokens)):
+            if skip:
+                skip = False
+                continue
+            if tokens[i] == self.space_token and i + 1 < len(tokens):
+                merged.append(self.space_token + tokens[i + 1])
+                skip = True
+            else:
+                merged.append(tokens[i])
+        return merged
 
     def _append_special_tokens(self):
         self.vocab.update(SPECIAL_TOKENS)
-        self.vocab.update(self.space_token)
+        self.vocab.add(self.space_token)
+        self.vocab.update(self.special_tokens.keys())
 
     def _build_corpus_dict(self, all_words):
         for w in all_words:
             # get the word splitted to its most basic components (special tokens and individual chars)
             splitted_w = self._split_to_chars(w)
             # update vocab based on unique pre tokens base components (special tokens and individual chars)
-            self.vocab.update(splitted_w)
-            # update vocab
             self.vocab.update(splitted_w)
             splited_w_as_key = tuple(splitted_w)
             if splited_w_as_key not in self.corpus_dict:
@@ -246,7 +268,7 @@ class BPETokenizer(BaseTokenizer, ABC):
         bigram_counter = self._find_bigrams_in_pre_tokens(pre_tokens)
 
         frequent_bigrams = self._return_most_common_bigrams(bigram_counter)
-
+        print(frequent_bigrams)
         # merge pre tokens that appear the most in the pre tokens lists
         merged_sentences = []
 
@@ -258,9 +280,7 @@ class BPETokenizer(BaseTokenizer, ABC):
                     merged = sentence[i] + sentence[i + 1]
                     new_sentence.append(merged)
                     i += 2
-                elif i < len(sentence) - 1 and self._check_if_punctuation(sentence[i + 1]) \
-                        and (
-                        i < len(sentence) - 2 and (sentence[i], sentence[i + 1], sentence[i + 2]) in frequent_bigrams):
+                elif i < len(sentence) - 2 and (sentence[i], sentence[i + 1], sentence[i + 2]) in frequent_bigrams:
                     merged = sentence[i] + sentence[i + 1] + sentence[i + 2]
                     new_sentence.append(merged)
                     i += 3
@@ -277,28 +297,24 @@ class BPETokenizer(BaseTokenizer, ABC):
             for i in range(len(sentence) - 1):
                 # avoid bi grams as word + punctuation, avoid stop words bi grams
                 if not self._check_if_punctuation(sentence[i]) and not self._check_if_determiner(
-                        sentence[i]) and not self._check_if_determiner(sentence[i + 1]):
-                    if self._check_if_punctuation(sentence[i + 1]):
-                        if "-" in sentence[i + 1] or "_" in sentence[i + 1]:
+                        sentence[i]):
+                    if self._check_if_punctuation(sentence[i + 1]) or self._check_if_determiner(sentence[i + 1]):
+                        if "-" in sentence[i + 1] or "_" in sentence[i + 1] or "." in sentence[i + 1]:
+                            # make a trigram in case second word is a determiner or one of: '.', '-' or '_'
                             if i + 2 < (len(sentence)) and not self._check_if_punctuation(
                                     sentence[i + 2]) and not self._check_if_determiner(sentence[i + 2]):
                                 bigram_counter[(sentence[i], sentence[i + 1], sentence[i + 2])] += 1
-                    else:
-                        bigram_counter[(sentence[i], sentence[i + 1])] += 1
+                        elif self._check_if_determiner(sentence[i + 1]):
+                            if i + 2 < (len(sentence)) and not self._check_if_punctuation(
+                                    sentence[i + 2]) and not self._check_if_determiner(sentence[i + 2]) and sentence[i + 2].startswith(self.space_token):
+                                bigram_counter[(sentence[i], sentence[i + 1], sentence[i + 2])] += 1
+                    # elif sentence[i + 1].startswith(self.space_token):
+                    #     bigram_counter[(sentence[i], sentence[i + 1])] += 1
 
         return bigram_counter
 
     def _check_if_punctuation(self, word):
-        flag = False
-        if word in string.punctuation or word == self.space_token:
-            flag = True
-        if word.startswith(self.space_token):
-            flag = True
-            for char in word[len(self.space_token):]:
-                if char not in string.punctuation:
-                    flag = False
-                    break
-        return flag
+        return word in string.punctuation
 
     def _check_if_determiner(self, word):
         if word.startswith(self.space_token):
@@ -334,7 +350,7 @@ class BPETokenizer(BaseTokenizer, ABC):
         # best_pair, (best_freq, best_set) = max(self.merge_cand.items(), key=lambda kv: kv[1][0])
         best_pair, (best_freq, best_set) = max(
             self.merge_cand.items(),
-            key=lambda kv: (kv[1][0], self.space_token in kv[0])
+            key=lambda kv: (kv[1][0], kv[0][0].startswith(self.space_token))
         )
         return best_pair, best_freq
 
@@ -379,6 +395,7 @@ class BPETokenizer(BaseTokenizer, ABC):
             old_count = self.corpus_dict.get(new_key, 0)
             self.corpus_dict[new_key] = old_count + word_freq
 
+            word_freq = self.corpus_dict[new_key]
             # 5) Add new bigram pairs from new_key into merge_cand
             for i in range(len(new_key) - 1):
                 pair = (new_key[i], new_key[i + 1])
@@ -391,6 +408,12 @@ class BPETokenizer(BaseTokenizer, ABC):
                         curr_freq += word_freq
                     self.merge_cand[pair] = (curr_freq, pre_tokens_set)
 
+# bpe = BPETokenizer()
+# bpe.load("../tokenizers/tokenizer_1_1.pkl")
+# text = "Ｕｎｉｃｏｄｅ! 🅤🅝🅘🅒🅞🅓🅔‽ 🇺‌🇳‌🇮‌🇨‌🇴‌🇩‌🇪! 😄 The very name strikes fear and awe into the hearts of programmers worldwide. We all know we ought to “support Unicode” in our software (whatever that means—like using wchar_t for all the strings, right?). But Unicode can be abstruse, and diving into the thousand-page Unicode Standard plus its dozens of supplementary annexes, reports, and notes can be more than a little intimidating. I don’t blame programmers for still finding the whole thing mysterious, even 30 years after Unicode’s inception."
+# text = "im going home to an empty house"
+# encoded = bpe.encode(text)
+# print(bpe.decode(encoded))
 # import os
 #
 # domain_file = "../data/domain_1_sample.txt"
