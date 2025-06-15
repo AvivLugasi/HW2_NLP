@@ -19,9 +19,9 @@ class BPETokenizer(BaseTokenizer, ABC):
                  vocab_size: int = 10000,
                  normalizer: Normalizer = None,
                  pre_tokenizer: PreTokenizer = None,
-                 enable_bigrams: bool = False,
-                 bigrams_freq_threshold: int = 10,
-                 merge_freq_threshold: int = 5):
+                 enable_bigrams: bool = True,
+                 bigrams_freq_threshold: int = 20,
+                 merge_freq_threshold: int = 20):
         """
         A Byte-Pair Encoding tokenizer that extends BaseTokenizer.
         Uses "<W>" as the word-begin marker to stay in sync with PreTokenizer.
@@ -179,28 +179,28 @@ class BPETokenizer(BaseTokenizer, ABC):
         possible_to_merge = True
         while possible_to_merge and len(words) > 1:
             word_merge_cands_pairs = [(words[i], words[i + 1], i) for i in range(len(words) - 1)]
-            # # find the pair with the lowest merge index
-            # pair = min(word_merge_cands_pairs, key=lambda p: self.rules.get("".join(p[:2]), float("inf")))
-            # # subtle: if there are no more merges available, the key will
-            # # result in an inf for every single pair, and the min will be
-            # # just the first pair in the list, arbitrarily
-            # # we can detect this terminating case by a membership check
-            # if "".join(pair[:2]) not in self.rules:
-            #     possible_to_merge = False
-            # else:
-            #     # otherwise let's merge the best pair (lowest merge index)
-            #     merge = "".join(pair[:2])
-            #     index = pair[-1]
-            #     words = words[:index] + [merge] + words[index + 2:]
-            for pair in word_merge_cands_pairs:
-                if "".join(pair[:2]) in self.rules.keys():
-                    merge = "".join(pair[:2])
-                    index = pair[-1]
-                    words = words[:index] + [merge] + words[index + 2:]
-                    possible_to_merge = True
-                    break
-                else:
-                    possible_to_merge = False
+            # find the pair with the lowest merge index
+            pair = min(word_merge_cands_pairs, key=lambda p: self.rules.get("".join(p[:2]), float("inf")))
+            # subtle: if there are no more merges available, the key will
+            # result in an inf for every single pair, and the min will be
+            # just the first pair in the list, arbitrarily
+            # we can detect this terminating case by a membership check
+            if "".join(pair[:2]) not in self.rules:
+                possible_to_merge = False
+            else:
+                # otherwise let's merge the best pair (lowest merge index)
+                merge = "".join(pair[:2])
+                index = pair[-1]
+                words = words[:index] + [merge] + words[index + 2:]
+            # for pair in word_merge_cands_pairs:
+            #     if "".join(pair[:2]) in self.rules.keys():
+            #         merge = "".join(pair[:2])
+            #         index = pair[-1]
+            #         words = words[:index] + [merge] + words[index + 2:]
+            #         possible_to_merge = True
+            #         break
+            #     else:
+            #         possible_to_merge = False
         return words
 
     def decode(self, token_ids: List[int]) -> str:
@@ -220,7 +220,7 @@ class BPETokenizer(BaseTokenizer, ABC):
                 continue
             reconstructed += sw
 
-        reconstructed = re.sub(re.escape(self.space_token), '', reconstructed, count=1)
+        #reconstructed = re.sub(re.escape(self.space_token), '', reconstructed, count=1)
         # Replace all remaining occurrences with a space
         reconstructed = re.sub(re.escape(self.space_token), ' ', reconstructed)
 
@@ -268,7 +268,7 @@ class BPETokenizer(BaseTokenizer, ABC):
         bigram_counter = self._find_bigrams_in_pre_tokens(pre_tokens)
 
         frequent_bigrams = self._return_most_common_bigrams(bigram_counter)
-        print(frequent_bigrams)
+
         # merge pre tokens that appear the most in the pre tokens lists
         merged_sentences = []
 
@@ -308,13 +308,22 @@ class BPETokenizer(BaseTokenizer, ABC):
                             if i + 2 < (len(sentence)) and not self._check_if_punctuation(
                                     sentence[i + 2]) and not self._check_if_determiner(sentence[i + 2]) and sentence[i + 2].startswith(self.space_token):
                                 bigram_counter[(sentence[i], sentence[i + 1], sentence[i + 2])] += 1
-                    # elif sentence[i + 1].startswith(self.space_token):
-                    #     bigram_counter[(sentence[i], sentence[i + 1])] += 1
+                    elif sentence[i + 1].startswith(self.space_token):
+                        bigram_counter[(sentence[i], sentence[i + 1])] += 1
 
         return bigram_counter
 
     def _check_if_punctuation(self, word):
-        return word in string.punctuation
+        flag = False
+        if word in string.punctuation:
+            flag = True
+        elif word.startswith(self.space_token):
+            for c in word[len(self.space_token):]:
+                flag = True
+                if c not in string.punctuation:
+                    flag = False
+                    break
+        return flag
 
     def _check_if_determiner(self, word):
         if word.startswith(self.space_token):

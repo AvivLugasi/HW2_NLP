@@ -1,3 +1,4 @@
+import string
 from functools import partial
 from typing import List
 from utils import run_data_job_in_parallel, logging
@@ -75,9 +76,7 @@ class PreTokenizer:
             raw_tokens = re.findall(compiled_pattern, text)
             pre_tokens = []
             for raw_token in raw_tokens:
-                if raw_token[0].isalpha():
-                    pre_tokens.append(BEGINNING_OF_WORD_MARK + raw_token)
-                elif raw_token.startswith(" "):
+                if raw_token.startswith(" "):
                     pre_tokens.append(BEGINNING_OF_WORD_MARK + raw_token[1:])
                 else:
                     pre_tokens.append(raw_token)
@@ -153,7 +152,7 @@ class PreTokenizer:
 #                         replace_html_tags=True)
 # text = normalize_text_file(normalizer, (text_file, 0))
 
-# text = "hUh...i                 dONt likE hiM...S Why dO i fEEL SO...diSSAPOiNtEd???  i thiNk i NEEd tO bE AWAy 4RM tHE COMPUtER fOR AWhilE...lAtES"
+# text = "Don't you know user23fc this is O'neil the ,scary coder new-york L.A"
 #
 # GPT4_SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
 # pre_tokenizer = PreTokenizer(train_mode=False,
