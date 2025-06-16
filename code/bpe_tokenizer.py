@@ -35,6 +35,8 @@ class BPETokenizer(BaseTokenizer, ABC):
         self.rules: List[Tuple[Tuple[str, str], str]] = []
         self.vocab: Set[str] = set()
 
+        self.merge_ranks: Dict[Tuple[str, str], int] = {}
+
 
         # How many merge-iterations to run
         self.vocab_size = vocab_size
@@ -130,7 +132,9 @@ class BPETokenizer(BaseTokenizer, ABC):
             self.vocab.add(merged_symbol)
             merges_done += 1
             logging.info(f"--- Merge #{merges_done}: {best_pair} → '{merged_symbol}' (freq={freq})")
-            logging.info("Remaining distinct pairs will be recomputed next iteration…\n")
+
+        logging.info("==== Caching merge ranks for faster encoding... ====")
+        self.merge_ranks = {pair: i for i, (pair, _) in enumerate(self.rules)}
 
         # 6) Assign token IDs to each subword (preserving [PAD],[UNK],[BOS],[EOS])
         next_id = max(self.token_to_id.values()) + 1
@@ -161,25 +165,33 @@ class BPETokenizer(BaseTokenizer, ABC):
 
     def _apply_merges(self, symbols: List[str]) -> List[str]:
         """
-        Applies all learned merge rules, in order, to a list of symbols.
+        Repeatedly merges the highest-priority pair in the symbol list until no more merges are possible.
         """
-        for pair, merged_symbol in self.rules:
-            if len(symbols) < 2:
+        while len(symbols) > 1:
+            # Find the next best merge operation.
+            # Scans the list of symbols and finds the merge with the lowest rank (highest priority).
+            min_rank = float('inf')
+            best_pair_info = None  # Stores (index_of_merge, pair_to_merge)
+
+            for i in range(len(symbols) - 1):
+                pair = (symbols[i], symbols[i + 1])
+                # Use the pre-computed cache for a fast O(1) lookup.
+                rank = self.merge_ranks.get(pair)
+                if rank is not None:
+                    if rank < min_rank:
+                        min_rank = rank
+                        best_pair_info = (i, pair)
+
+            # If no mergeable pair was found in the entire sequence, we are done.
+            if best_pair_info is None:
                 break
 
-            new_symbols = []
-            i = 0
-            while i < len(symbols):
-                if i < len(symbols) - 1 and symbols[i] == pair[0] and symbols[i+1] == pair[1]:
-                    new_symbols.append(merged_symbol)
-                    i += 2
-                else:
-                    new_symbols.append(symbols[i])
-                    i += 1
-            symbols = new_symbols
+            # A merge was found, so we perform it.
+            i, pair_to_merge = best_pair_info
+            merged_symbol = ''.join(pair_to_merge)
+            symbols = symbols[:i] + [merged_symbol] + symbols[i + 2:]
+
         return symbols
-
-
 
     def decode(self, token_ids: List[int]) -> str:
         """
