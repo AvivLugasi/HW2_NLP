@@ -32,8 +32,9 @@ class BPETokenizer(BaseTokenizer, ABC):
         # BPE-specific containers
         self.corpus_dict: Dict[tuple[str], int] = {}
         self.merge_cand: Dict[Tuple[str, str], tuple[int, set]] = {}
-        self.rules: Dict[str, int] = {}
+        self.rules: List[Tuple[Tuple[str, str], str]] = []
         self.vocab: Set[str] = set()
+
 
         # How many merge-iterations to run
         self.vocab_size = vocab_size
@@ -47,14 +48,14 @@ class BPETokenizer(BaseTokenizer, ABC):
         # Normalizer
         if normalizer is None:
             normalizer = Normalizer(
-                unicode_normalization='NFKD',
-                lower_case="TITLE CASE + STOP WORDS",
-                remove_accents=True,
-                expand_contractions=True,
-                replace_urls=True,
-                replace_usernames=True,
-                replace_hashtag=True,
-                replace_html_tags=True
+                unicode_normalization=None,
+                lower_case=None,
+                remove_accents=False,
+                expand_contractions=False,
+                replace_urls=False,
+                replace_usernames=False,
+                replace_hashtag=False,
+                replace_html_tags=False
             )
         self.normalizer = normalizer
 
@@ -120,12 +121,12 @@ class BPETokenizer(BaseTokenizer, ABC):
                 break
             # define the merge
             merged_symbol = ''.join(best_pair)
+            self.rules.append((best_pair, merged_symbol))
             # 4b) update the corpus and merge dicts
             self._update_corpus(best_pair)
             # 4c) remove the pair from the merge cand list
             del self.merge_cand[best_pair]
             # 4d) update rule and vocab
-            self.rules[merged_symbol] = freq
             self.vocab.add(merged_symbol)
             merges_done += 1
             logging.info(f"--- Merge #{merges_done}: {best_pair} → '{merged_symbol}' (freq={freq})")
@@ -144,36 +145,41 @@ class BPETokenizer(BaseTokenizer, ABC):
 
     def encode(self, text: str) -> List[int]:
         """
-        Convert a raw text string → list of token IDs via BPE:
-          1. Normalize
-          2. Pre-tokenize in inference mode
-          3. For each token, build ["<W>", c1, c2, ...] or list(word) if no "<W>"
-          4. Apply each merge from self.rules in order
-          5. Map each resulting subword → ID
+        Convert a raw text string → list of token IDs via BPE.
         """
         normalized = self.normalizer.normalize_text(text=text)
         self.pre_tokenizer.train_mode = False
         pre_tokens = self.pre_tokenizer.pre_tokenize_str(text=normalized)
-        splits = [self._split_to_chars(word) for word in pre_tokens]
-        splits = list(itertools.chain.from_iterable(splits))
-        tokens = self._apply_merges_on_words(splits)
-        print(tokens)
-        return [self.token_to_id.get(token, self.token_to_id["[UNK]"]) for token in tokens]
 
-    def _apply_merges_on_words(self, words):
-        possible_to_merge = True
-        while possible_to_merge and len(words) > 1:
-            word_merge_cands_pairs = [(words[i], words[i + 1], i) for i in range(len(words) - 1)]
-            for pair in word_merge_cands_pairs:
-                if "".join(pair[:2]) in self.rules.keys():
-                    merge = "".join(pair[:2])
-                    index = pair[-1]
-                    words = words[:index] + [merge] + words[index + 2:]
-                    possible_to_merge = True
-                    break
+        all_subwords = []
+        for word in pre_tokens:
+            symbols = self._split_to_chars(word)
+            merged_symbols = self._apply_merges(symbols)
+            all_subwords.extend(merged_symbols)
+
+        return [self.token_to_id.get(token, self.token_to_id["[UNK]"]) for token in all_subwords]
+
+    def _apply_merges(self, symbols: List[str]) -> List[str]:
+        """
+        Applies all learned merge rules, in order, to a list of symbols.
+        """
+        for pair, merged_symbol in self.rules:
+            if len(symbols) < 2:
+                break
+
+            new_symbols = []
+            i = 0
+            while i < len(symbols):
+                if i < len(symbols) - 1 and symbols[i] == pair[0] and symbols[i+1] == pair[1]:
+                    new_symbols.append(merged_symbol)
+                    i += 2
                 else:
-                    possible_to_merge = False
-        return words
+                    new_symbols.append(symbols[i])
+                    i += 1
+            symbols = new_symbols
+        return symbols
+
+
 
     def decode(self, token_ids: List[int]) -> str:
         """
@@ -226,7 +232,7 @@ class BPETokenizer(BaseTokenizer, ABC):
 
     def _append_special_tokens(self):
         self.vocab.update(SPECIAL_TOKENS)
-        self.vocab.update(self.space_token)
+        self.vocab.add(self.space_token)
 
     def _build_corpus_dict(self, all_words):
         for w in all_words:
