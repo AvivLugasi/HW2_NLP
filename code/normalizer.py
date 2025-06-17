@@ -99,6 +99,14 @@ class Normalizer:
             text: string of text
         Returns: The normalized text.
         """
+        #text = re.sub(r"[^\x00-\x7F]+", "", text)
+        #text = re.sub(r"[^\x00-\x7F]+", "[UNK]", text)
+        if self.unicode_normalization:
+            text = _unicode_normalize(
+                text=text,
+                unicode_norm=self.unicode_normalization,
+                remove_accents=self.remove_accents
+            )
         if self.replace_html_tags:
             text = _replace_html_tags(text=text)
         if self.replace_urls:
@@ -107,12 +115,6 @@ class Normalizer:
             text = _replace_usernames(text=text)
         if self.replace_hashtag:
             text = _replace_hashtags(text=text)
-        if self.unicode_normalization:
-            text = _unicode_normalize(
-                text=text,
-                unicode_norm=self.unicode_normalization,
-                remove_accents=self.remove_accents
-            )
         if self.lower_case:
             text = _lower_case_text(text=text, mode=self.lower_case)
         if self.expand_contractions:

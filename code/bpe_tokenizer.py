@@ -200,42 +200,31 @@ class BPETokenizer(BaseTokenizer, ABC):
           2. Skip [PAD], [BOS], [EOS]
           3. If subword starts with "<W>", prepend a space and remove "<W>"
         """
-        subwords: List[str] = []
-        for idx in token_ids:
-            subwords.append(self.id_to_token.get(idx, "[UNK]"))
-        reconstructed = ""
+        tokens = [self.id_to_token.get(idx, "[UNK]") for idx in token_ids]
 
-        for i, sw in enumerate(subwords):
-            if sw in ("[PAD]", "[BOS]", "[EOS]"):
+        text_parts = []
+        for token in tokens:
+            # Skip structural tokens
+            if token in ("[PAD]", "[BOS]", "[EOS]"):
                 continue
-            reconstructed += sw
+            if token == "[UNK]":
+                text_parts.append("�")  # Standard replacement character
+                continue
 
-        reconstructed = re.sub(re.escape(self.space_token), '', reconstructed, count=1)
-        # Replace all remaining occurrences with a space
-        reconstructed = re.sub(re.escape(self.space_token), ' ', reconstructed)
+            # This is the crucial part: check for the space marker first.
+            if token.startswith(self.space_token):
+                # Add a space, but only if it's not the very first token.
+                if text_parts:
+                    text_parts.append(" ")
+                # Process the rest of the token
+                token = token[len(self.space_token):]
 
-        return reconstructed.strip()
+            text_parts.append(token)
 
-    def initial_spliter(self, text: str) -> List[List[str]]:
-        """
-        Given a raw text string, normalize & pre-tokenize, then return a nested list
-        of symbol-lists for each token:
-          e.g. "Hello world" → [["<W>","H","e","l","l","o"], ["<W>","w","o","r","l","d"]]
-        """
-        normalized = self.normalizer.normalize_text(text=text)
-        self.pre_tokenizer.train_mode = True
-        pre_tokens = self.pre_tokenizer.pre_tokenize_str(text=normalized)
+        return "".join(text_parts)
 
-        result: List[List[str]] = []
-        for tok in pre_tokens:
-            if tok.startswith(self.space_token):
-                symbols = [self.space_token] + list(tok[len(self.space_token):])
-            else:
-                symbols = list(tok)
-            result.append(symbols)
-        return result
-
-    def _split_to_chars(self, word: str):
+    def _split_to_chars(self, word: str) -> List[str]:
+        # This regex ensures special tokens are treated as whole units
         escape_tokens = list(SPECIAL_TOKENS) + [self.space_token]
         escaped = sorted((re.escape(tok) for tok in escape_tokens), key=len, reverse=True)
         group = "|".join(escaped)
@@ -245,43 +234,41 @@ class BPETokenizer(BaseTokenizer, ABC):
     def _append_special_tokens(self):
         self.vocab.update(SPECIAL_TOKENS)
         self.vocab.add(self.space_token)
+        self.vocab.update(self.special_tokens.keys())
 
     def _build_corpus_dict(self, all_words):
-        for w in all_words:
-            # get the word splitted to its most basic components (special tokens and individual chars)
-            splitted_w = self._split_to_chars(w)
-            # update vocab based on unique pre tokens base components (special tokens and individual chars)
-            self.vocab.update(splitted_w)
-            # update vocab
-            self.vocab.update(splitted_w)
-            splited_w_as_key = tuple(splitted_w)
-            if splited_w_as_key not in self.corpus_dict:
-                self.corpus_dict[splited_w_as_key] = 0
-            freq = self.corpus_dict[splited_w_as_key]
-            self.corpus_dict[splited_w_as_key] = freq + 1
+        # Correctly build the corpus dictionary and initial vocabulary
+        word_counts = Counter(tuple(self._split_to_chars(w)) for w in all_words)
+        self.corpus_dict = dict(word_counts)
+        # Add all unique single characters/symbols to the vocab from the start
+        unique_symbols = set(symbol for word_tuple in self.corpus_dict for symbol in word_tuple)
+        self.vocab.update(unique_symbols)
+
+    # --- Bi-gram Implementation (as requested) ---
 
     def _create_bi_grams_pre_tokens(self, pre_tokens):
         bigram_counter = self._find_bigrams_in_pre_tokens(pre_tokens)
+        frequent_bigrams = {
+            pair for pair, count in bigram_counter.items()
+            if count >= self.bigrams_freq_threshold
+        }
 
-        frequent_bigrams = self._return_most_common_bigrams(bigram_counter)
-
-        # merge pre tokens that appear the most in the pre tokens lists
         merged_sentences = []
 
         for sentence in pre_tokens:
             new_sentence = []
             i = 0
             while i < len(sentence):
-                if i < len(sentence) - 1 and (sentence[i], sentence[i + 1]) in frequent_bigrams:
-                    merged = sentence[i] + sentence[i + 1]
-                    new_sentence.append(merged)
-                    i += 2
-                elif i < len(sentence) - 1 and self._check_if_punctuation(sentence[i + 1]) \
-                        and (
-                        i < len(sentence) - 2 and (sentence[i], sentence[i + 1], sentence[i + 2]) in frequent_bigrams):
+                # Try to merge a 3-token sequence first (e.g., word-hyphen-word)
+                if i < len(sentence) - 2 and (sentence[i], sentence[i + 1], sentence[i + 2]) in frequent_bigrams:
                     merged = sentence[i] + sentence[i + 1] + sentence[i + 2]
                     new_sentence.append(merged)
                     i += 3
+                # Then try to merge a 2-token sequence
+                elif i < len(sentence) - 1 and (sentence[i], sentence[i + 1]) in frequent_bigrams:
+                    merged = sentence[i] + sentence[i + 1]
+                    new_sentence.append(merged)
+                    i += 2
                 else:
                     new_sentence.append(sentence[i])
                     i += 1
@@ -293,122 +280,89 @@ class BPETokenizer(BaseTokenizer, ABC):
 
         for sentence in pre_tokens:
             for i in range(len(sentence) - 1):
-                # avoid bi grams as word + punctuation, avoid stop words bi grams
-                if not self._check_if_punctuation(sentence[i]) and not self._check_if_determiner(
-                        sentence[i]) and not self._check_if_determiner(sentence[i + 1]):
-                    if self._check_if_punctuation(sentence[i + 1]):
-                        if "-" in sentence[i + 1] or "_" in sentence[i + 1]:
-                            if i + 2 < (len(sentence)) and not self._check_if_punctuation(
-                                    sentence[i + 2]) and not self._check_if_determiner(sentence[i + 2]):
-                                bigram_counter[(sentence[i], sentence[i + 1], sentence[i + 2])] += 1
-                    else:
-                        bigram_counter[(sentence[i], sentence[i + 1])] += 1
+                token1 = sentence[i]
+                token2 = sentence[i + 1]
 
+                if self._check_if_determiner(token1) or self._check_if_determiner(token2):
+                    continue
+
+                # Handle word-hyphen-word sequences (e.g., "state-of-the-art")
+                if self._check_if_punctuation(token2) and ("-" in token2 or "_" in token2):
+                    if i + 2 < len(sentence):
+                        token3 = sentence[i + 2]
+                        if not self._check_if_punctuation(token1) and not self._check_if_punctuation(token3):
+                            bigram_counter[(token1, token2, token3)] += 1
+                # Handle regular two-word bigrams
+                elif not self._check_if_punctuation(token1) and not self._check_if_punctuation(token2):
+                    bigram_counter[(token1, token2)] += 1
         return bigram_counter
 
-    def _check_if_punctuation(self, word):
-        flag = False
-        if word in string.punctuation or word == self.space_token:
-            flag = True
+    def _check_if_punctuation(self, word: str) -> bool:
+        # A token is considered punctuation if all its characters are punctuation,
+        # ignoring the <W> prefix.
         if word.startswith(self.space_token):
-            flag = True
-            for char in word[len(self.space_token):]:
-                if char not in string.punctuation:
-                    flag = False
-                    break
-        return flag
+            word = word[len(self.space_token):]
+        # Return False if the word is empty after stripping prefix
+        return bool(word) and all(c in string.punctuation for c in word)
 
-    def _check_if_determiner(self, word):
+    def _check_if_determiner(self, word: str) -> bool:
         if word.startswith(self.space_token):
             word = word[len(self.space_token):]
         return word.lower() in DETERMINERS
 
-    def _return_most_common_bigrams(self, bigram_counter):
-        return {
-            pair: count
-            for pair, count in bigram_counter.items()
-            if count >= self.bigrams_freq_threshold
-        }
+    # --- Core BPE Training Helpers ---
 
     def _build_merge_cand_dict(self):
-        most_freq_pair = None
-        most_freq_pair_freq = 0
-        for key in self.corpus_dict.keys():
-            word_freq = self.corpus_dict[key]
-            word_merge_cands_pairs = [(key[i], key[i + 1]) for i in range(len(key) - 1)]
-            for pair in word_merge_cands_pairs:
-                if pair not in self.merge_cand:
-                    self.merge_cand[pair] = (word_freq, {key})
-                else:
-                    curr_freq, pre_tokens_set = self.merge_cand[pair]
-                    pre_tokens_set.add(key)
-                    self.merge_cand[pair] = (curr_freq + word_freq, pre_tokens_set)
-                if most_freq_pair_freq < self.merge_cand[pair][0]:
-                    most_freq_pair = pair
-                    most_freq_pair_freq = self.merge_cand[pair][0]
-        return most_freq_pair, most_freq_pair_freq
+        for key, word_freq in self.corpus_dict.items():
+            for i in range(len(key) - 1):
+                pair = (key[i], key[i + 1])
+                curr_freq, pre_tokens_set = self.merge_cand.get(pair, (0, set()))
+                pre_tokens_set.add(key)
+                self.merge_cand[pair] = (curr_freq + word_freq, pre_tokens_set)
 
     def _get_best_pair(self):
-        # best_pair, (best_freq, best_set) = max(self.merge_cand.items(), key=lambda kv: kv[1][0])
-        best_pair, (best_freq, best_set) = max(
-            self.merge_cand.items(),
-            key=lambda kv: (kv[1][0], self.space_token in kv[0])
-        )
-        return best_pair, best_freq
+        if not self.merge_cand:
+            return None, 0
+        # Filter out pairs that may have a zero frequency after updates
+        valid_cands = {p: f for p, (f, s) in self.merge_cand.items() if f > 0}
+        if not valid_cands:
+            return None, 0
+        best_pair = max(valid_cands, key=valid_cands.get)
+        return best_pair, valid_cands[best_pair]
 
     def _update_corpus(self, best_pair):
-        _, best_set = self.merge_cand[best_pair]  # best_set is a set of tuples
-
+        _, best_set = self.merge_cand[best_pair]
+        merged_token = "".join(best_pair)
         for splited_word in list(best_set):
-            # splited_word is a tuple, e.g. ('<W>','t','h','i','n','k')
-            word_freq = self.corpus_dict[splited_word]
+            if splited_word not in self.corpus_dict: continue
+            word_freq = self.corpus_dict.pop(splited_word)
 
-            # 1) Remove splited_word from all its bigram‐lists
+            # Decrement counts for pairs in the old word
             for i in range(len(splited_word) - 1):
                 key = (splited_word[i], splited_word[i + 1])
-                freq_word_list = self.merge_cand.get(key)
-                if freq_word_list is not None:
-                    merge_freq, word_lists = freq_word_list
-                    word_lists.discard(splited_word)  # safe, no KeyError
-                    merge_freq -= word_freq
-                    self.merge_cand[key] = (merge_freq, word_lists)
+                if key in self.merge_cand:
+                    merge_freq, word_lists = self.merge_cand[key]
+                    word_lists.discard(splited_word)
+                    self.merge_cand[key] = (merge_freq - word_freq, word_lists)
 
-            # 2) Delete the old entry from corpus_dict
-            del self.corpus_dict[splited_word]
-
-            # 3) Build new_key by merging best_pair inside splited_word
-            new_key_list = []
-            i = 0
+            # Create new word and add it back to corpus
+            new_key_list, i = [], 0
             while i < len(splited_word):
-                if (i < len(splited_word) - 1
-                        and splited_word[i] == best_pair[0]
-                        and splited_word[i + 1] == best_pair[1]):
-
-                    merged_token = "".join(best_pair)  # e.g. "th"
+                if i < len(splited_word) - 1 and (splited_word[i], splited_word[i + 1]) == best_pair:
                     new_key_list.append(merged_token)
                     i += 2
                 else:
                     new_key_list.append(splited_word[i])
                     i += 1
+            new_key = tuple(new_key_list)
+            self.corpus_dict[new_key] = self.corpus_dict.get(new_key, 0) + word_freq
 
-            new_key = tuple(new_key_list)  # always a tuple
-
-            # 4) Insert new_key into corpus_dict
-            old_count = self.corpus_dict.get(new_key, 0)
-            self.corpus_dict[new_key] = old_count + word_freq
-
-            # 5) Add new bigram pairs from new_key into merge_cand
+            # Increment counts for pairs in the new word
             for i in range(len(new_key) - 1):
                 pair = (new_key[i], new_key[i + 1])
-                if pair not in self.merge_cand:
-                    self.merge_cand[pair] = (word_freq, {new_key})
-                else:
-                    curr_freq, pre_tokens_set = self.merge_cand[pair]
-                    if new_key not in pre_tokens_set:
-                        pre_tokens_set.add(new_key)
-                        curr_freq += word_freq
-                    self.merge_cand[pair] = (curr_freq, pre_tokens_set)
-
+                curr_freq, pre_tokens_set = self.merge_cand.get(pair, (0, set()))
+                pre_tokens_set.add(new_key)
+                self.merge_cand[pair] = (curr_freq + word_freq, pre_tokens_set)
 # import os
 #
 # domain_file = "../data/domain_1_sample.txt"
