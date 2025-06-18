@@ -11,7 +11,7 @@ from collections import Counter
 
 from utils import logging
 
-from patterns_and_dicts import SPECIAL_TOKENS, DETERMINERS
+from patterns_and_dicts import SPECIAL_TOKENS, DETERMINERS, GPT4_SPLIT_PATTERN
 
 
 class BPETokenizer(BaseTokenizer, ABC):
@@ -21,7 +21,7 @@ class BPETokenizer(BaseTokenizer, ABC):
                  pre_tokenizer: PreTokenizer = None,
                  enable_bigrams: bool = True,
                  bigrams_freq_threshold: int = 10,
-                 merge_freq_threshold: int = 5):
+                 merge_freq_threshold: int = 20):
         """
         A Byte-Pair Encoding tokenizer that extends BaseTokenizer.
         Uses "<W>" as the word-begin marker to stay in sync with PreTokenizer.
@@ -36,7 +36,6 @@ class BPETokenizer(BaseTokenizer, ABC):
         self.vocab: Set[str] = set()
 
         self.merge_ranks: Dict[Tuple[str, str], int] = {}
-
 
         # How many merge-iterations to run
         self.vocab_size = vocab_size
@@ -57,7 +56,9 @@ class BPETokenizer(BaseTokenizer, ABC):
                 replace_urls=False,
                 replace_usernames=False,
                 replace_hashtag=False,
-                replace_html_tags=False
+                replace_html_tags=False,
+                remove_repeated_letters=True,
+                remove_suffix_and_prefix=True
             )
         self.normalizer = normalizer
 
@@ -65,7 +66,8 @@ class BPETokenizer(BaseTokenizer, ABC):
         if pre_tokenizer is None:
             pre_tokenizer = PreTokenizer(
                 train_mode=True,
-                split_punctuation=True
+                split_punctuation=True,
+                custom_spliter=GPT4_SPLIT_PATTERN
             )
         self.pre_tokenizer = pre_tokenizer
 
@@ -161,6 +163,7 @@ class BPETokenizer(BaseTokenizer, ABC):
             merged_symbols = self._apply_merges(symbols)
             all_subwords.extend(merged_symbols)
 
+        logging.debug(f"generated tokens: {all_subwords}")
         return [self.token_to_id.get(token, self.token_to_id["[UNK]"]) for token in all_subwords]
 
     def _apply_merges(self, symbols: List[str]) -> List[str]:
@@ -263,38 +266,68 @@ class BPETokenizer(BaseTokenizer, ABC):
                 if i < len(sentence) - 2 and (sentence[i], sentence[i + 1], sentence[i + 2]) in frequent_bigrams:
                     merged = sentence[i] + sentence[i + 1] + sentence[i + 2]
                     new_sentence.append(merged)
-                    i += 3
+                    # i += 3
                 # Then try to merge a 2-token sequence
                 elif i < len(sentence) - 1 and (sentence[i], sentence[i + 1]) in frequent_bigrams:
                     merged = sentence[i] + sentence[i + 1]
                     new_sentence.append(merged)
-                    i += 2
+                    # i += 2
                 else:
                     new_sentence.append(sentence[i])
-                    i += 1
+                i += 1
             merged_sentences.append(new_sentence)
         return merged_sentences
 
     def _find_bigrams_in_pre_tokens(self, pre_tokens):
+        """
+        Scan through pre-tokenized sentences and count:
+          1. Regular two-word bigrams (word, word)
+          2. Three-token sequences connected by hyphens/underscores (word–punct–word)
+          3. Three-token sequences for dot-abbreviations (word . word)
+
+        We skip any bigram that involves a determiner or pure punctuation as a word.
+        """
         bigram_counter = Counter()
 
         for sentence in pre_tokens:
-            for i in range(len(sentence) - 1):
-                token1 = sentence[i]
-                token2 = sentence[i + 1]
+            # We need at least two tokens for a bigram, and three for the hyphen/dot cases
+            n = len(sentence)
+            if n < 2:
+                continue
 
-                if self._check_if_determiner(token1) or self._check_if_determiner(token2):
+            for i in range(n - 1):
+                first = sentence[i]
+                second = sentence[i + 1]
+
+                # --- SKIP any pair containing a determiner ---
+                if self._check_if_determiner(first) or self._check_if_determiner(second):
                     continue
 
-                # Handle word-hyphen-word sequences (e.g., "state-of-the-art")
-                if self._check_if_punctuation(token2) and ("-" in token2 or "_" in token2):
-                    if i + 2 < len(sentence):
-                        token3 = sentence[i + 2]
-                        if not self._check_if_punctuation(token1) and not self._check_if_punctuation(token3):
-                            bigram_counter[(token1, token2, token3)] += 1
-                # Handle regular two-word bigrams
-                elif not self._check_if_punctuation(token1) and not self._check_if_punctuation(token2):
-                    bigram_counter[(token1, token2)] += 1
+                # --- CASE A: hyphen- or underscore-connected word sequences ---
+                #    e.g. ["new", "-", "york"]
+                if (
+                        self._check_if_punctuation(second)
+                        and "-" in second
+                        and i + 2 < n
+                ):
+                    third = sentence[i + 2]
+                    if not self._check_if_punctuation(first) and not self._check_if_punctuation(third) and not self._check_if_determiner(third):
+                        bigram_counter[(first, second, third)] += 1
+                    continue  # move on to next position
+
+                # # --- CASE B: dot-abbreviations (word . word), e.g. "L.A" ---
+                # if second == "." and i + 2 < n:
+                #     third = sentence[i + 2]
+                #     # ensure the “. ” placeholder isn’t just the space token
+                #     if not third.startswith(self.space_token):
+                #         if not self._check_if_punctuation(first) and not self._check_if_punctuation(third):
+                #             bigram_counter[(first, second, third)] += 1
+                #     continue
+
+                # --- CASE C: regular two-word bigrams (word, word) ---
+                if not self._check_if_punctuation(first) and not self._check_if_punctuation(second):
+                    bigram_counter[(first, second)] += 1
+
         return bigram_counter
 
     def _check_if_punctuation(self, word: str) -> bool:
