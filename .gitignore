@@ -1,3 +1,4 @@
 data/*
-tokenizers/*
+trained_tokenizers/*
 models/*
+*.zip
