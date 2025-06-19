@@ -74,7 +74,7 @@ def generate_tokenizer(domain: Literal[1, 2, 3]):
     vocab_size = 5000
 
     domain_file = f"data/domain_{domain}_train.txt"
-    output_dir = "tokenizers"
+    output_dir = "trained_tokenizers"
     tokenizer_file = f"tokenizer_{domain}.pkl"
     os.makedirs(output_dir, exist_ok=True)
     logging.info(f"Reading domain data from {domain_file}")
