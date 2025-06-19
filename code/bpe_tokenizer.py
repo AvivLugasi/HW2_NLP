@@ -246,10 +246,30 @@ class BPETokenizer(BaseTokenizer, ABC):
         unique_symbols = set(symbol for word_tuple in self.corpus_dict for symbol in word_tuple)
         self.vocab.update(unique_symbols)
 
-    # --- Bi-gram Implementation (as requested) ---
 
     def _create_bi_grams_pre_tokens(self, pre_tokens):
         bigram_counter = self._find_bigrams_in_pre_tokens(pre_tokens)
+
+        # --- Report bi-grams counts ---
+        if bigram_counter:
+            print("\n--- Bi-gram Frequency Report ---")
+
+            # Get the 5 most common bi-grams
+            most_common = bigram_counter.most_common(5)
+            print("5 Most Common Bi-grams:")
+            for bigram, freq in most_common:
+                print(f"  {bigram}: {freq} occurrences")
+
+            # Get the 5 least common bi-grams
+            least_common = bigram_counter.most_common()[-5:]
+            print("\n5 Least Common Bi-grams:")
+            for bigram, freq in reversed(least_common):  # reverse to show lowest first
+                print(f"  {bigram}: {freq} occurrences")
+            print("---------------------------------\n")
+        else:
+            print("\n--- No bi-grams found to report. ---\n")
+        # --- End of report ---
+
         frequent_bigrams = {
             pair for pair, count in bigram_counter.items()
             if count >= self.bigrams_freq_threshold
@@ -302,6 +322,9 @@ class BPETokenizer(BaseTokenizer, ABC):
                 if self._check_if_determiner(first) or self._check_if_determiner(second):
                     continue
 
+                if self._check_if_not_ascii(first) or self._check_if_not_ascii(second):
+                    continue
+
                 # --- CASE A: hyphen- or underscore-connected word sequences ---
                 #    e.g. ["new", "-", "york"]
                 if (
@@ -310,7 +333,7 @@ class BPETokenizer(BaseTokenizer, ABC):
                         and i + 2 < n
                 ):
                     third = sentence[i + 2]
-                    if not self._check_if_punctuation(first) and not self._check_if_punctuation(third) and not self._check_if_determiner(third):
+                    if not self._check_if_punctuation(first) and not self._check_if_punctuation(third) and not self._check_if_determiner(third) and not self._check_if_not_ascii(third):
                         bigram_counter[(first, second, third)] += 1
                     continue  # move on to next position
 
@@ -332,6 +355,12 @@ class BPETokenizer(BaseTokenizer, ABC):
         if word.startswith(self.space_token):
             word = word[len(self.space_token):]
         return word.lower() in DETERMINERS
+
+    def _check_if_not_ascii(self, word: str) -> bool:
+        if word.startswith(self.space_token):
+            word = word[len(self.space_token):]
+        # check for any non-ASCII codepoint
+        return any(ord(ch) > 127 for ch in word)
 
     # --- Core BPE Training Helpers ---
 
