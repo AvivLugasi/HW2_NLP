@@ -13,24 +13,28 @@ from train_ner_model import train_ner_model, read_ner_data, evaluate_model, NERM
 from torch.utils.data import DataLoader
 
 # Constants for folder structure
-REQUIRED_FOLDERS = ["code", "trained_tokenizer"]
+REQUIRED_FOLDERS = ["code", "trained_tokenizers"]
 REQUIRED_TOKENIZER_FILES = [
-    "trained_tokenizer/tokenizer_1.pkl",
-    "trained_tokenizer/tokenizer_2.pkl",
-    "trained_tokenizer/tokenizer_3.pkl"
+    "trained_tokenizers/tokenizer_1.pkl",
+    "trained_tokenizers/tokenizer_2.pkl",
+    "trained_tokenizers/tokenizer_3.pkl"
 ]
-REQUIRED_COMP_FILES = []  # Add any required comparison files here
+ # Add any required comparison files here
 
 DOMAIN_TEST_FILE = "domain_test.txt"  # Should be in the root or specify path
-NER_TRAIN_FILE = "data/ner_data/train.tagged"
-NER_DEV_FILE = "data/ner_data/dev.tagged"
+NER_TRAIN_FILE = "../data_clean/ner_data/train_1_binary.tagged"
+NER_DEV_FILE = "../data_clean/ner_data/dev_1_binary.tagged"
 
 
 def extract_student_ids(zip_filename):
-    """Extract student IDs from the zip filename."""
-    match = re.match(r'HW2_(\d+)_(\d+)\.zip', os.path.basename(zip_filename))
-    if match:
-        return match.group(1), match.group(2)
+    """Extract student IDs from the zip filename. Handles both one and two ID formats."""
+    base = os.path.basename(zip_filename)
+    match_two = re.match(r'HW2_(\d+)_(\d+)\.zip', base)
+    if match_two:
+        return match_two.group(1), match_two.group(2)
+    match_one = re.match(r'HW2_(\d+)\.zip', base)
+    if match_one:
+        return match_one.group(1), None
     return None, None
 
 
@@ -40,7 +44,7 @@ def unzip_submission(zip_path, extract_dir=None):
     
     Args:
         zip_path: Path to the zip file
-        extract_dir: Directory to extract to (if None, use a temp dir)
+        extract_dir: Directory to extract to (if None, use a folder named after the zip file in the current directory)
         
     Returns:
         Path to the extracted directory, student IDs
@@ -51,14 +55,18 @@ def unzip_submission(zip_path, extract_dir=None):
     
     # Extract student IDs from filename
     id1, id2 = extract_student_ids(zip_path)
-    if id1 is None or id2 is None:
-        print(f"[ERROR] Could not extract student IDs from filename: {zip_path}")
-        print("Filename should be in format: HW2_ID1_ID2.zip")
+    print(f"[INFO] Extracted student IDs: id1={id1}, id2={id2}")
+    if id1 is None:
+        print(f"[ERROR] Could not extract student ID(s) from filename: {zip_path}")
+        print("Filename should be in format: HW2_ID1_ID2.zip or HW2_ID.zip")
         return None, (None, None)
     
-    # Create a temporary directory if extract_dir is not provided
+    # Create a directory in the current working directory if extract_dir is not provided
     if extract_dir is None:
-        extract_dir = tempfile.mkdtemp()
+        base_name = os.path.splitext(os.path.basename(zip_path))[0]
+        extract_dir = os.path.abspath(base_name)
+        if not os.path.exists(extract_dir):
+            os.makedirs(extract_dir)
     
     # Unzip the file
     try:
@@ -105,7 +113,10 @@ def check_structure(root_dir, student_ids):
             print(f"[OK] Found tokenizer file: {file}")
     
     # Check for the report with the student IDs in the filename
-    report_name = f"report_{id1}_{id2}.pdf"
+    if id2 is not None:
+        report_name = f"report_{id1}_{id2}.pdf"
+    else:
+        report_name = f"report_{id1}.pdf"
     report_path = os.path.join(root_dir, report_name)
     if not os.path.isfile(report_path):
         print(f"[ERROR] Missing PDF report: {report_name}")
@@ -113,47 +124,11 @@ def check_structure(root_dir, student_ids):
     else:
         print(f"[OK] Found PDF report: {report_name}")
     
-    # Check comparison files
-    for file in REQUIRED_COMP_FILES:
-        file_path = os.path.join(root_dir, file)
-        if not os.path.isfile(file_path):
-            print(f"[ERROR] Missing comparison file: {file}")
-            all_ok = False
-        else:
-            print(f"[OK] Found comparison file: {file}")
+   
     
     return all_ok
 
 
-def test_tokenizer_efficiency(tokenizer, domain_test_file):
-    """
-    Test tokenizer efficiency on domain test file.
-    
-    Args:
-        tokenizer: Tokenizer to test
-        domain_test_file: Path to the domain test file
-        
-    Returns:
-        Efficiency metric (or None if test failed)
-    """
-    print(f"\nTesting tokenizer efficiency on {domain_test_file}...")
-    if not os.path.isfile(domain_test_file):
-        print(f"[ERROR] Domain test file not found: {domain_test_file}")
-        return None
-    
-    with open(domain_test_file, 'r', encoding='utf-8') as f:
-        texts = [line.strip() for line in f if line.strip()]
-    
-    total_chars = sum(len(t) for t in texts)
-    total_tokens = sum(len(tokenizer.encode(t)) for t in texts)
-    
-    if total_chars == 0:
-        print("[ERROR] Domain test file is empty.")
-        return None
-    
-    efficiency = total_tokens / total_chars
-    print(f"[RESULT] Tokens per character: {efficiency:.4f}")
-    return efficiency
 
 
 def test_tokenizer_methods(tokenizer):
@@ -201,6 +176,45 @@ def train_and_eval_ner(tokenizer_path, train_file, dev_file):
     except Exception as e:
         print(f"[ERROR] Could not load tokenizer: {e}")
         return None
+    
+    # Check for train_file and dev_file, try parent dir and cwd if not found
+    attempted_train_files = [train_file]
+    if not os.path.isfile(train_file):
+        alt_train_file = os.path.abspath(os.path.join(os.path.dirname(train_file), '..', os.path.basename(train_file)))
+        attempted_train_files.append(alt_train_file)
+        if os.path.isfile(alt_train_file):
+            print(f"[INFO] Training file not found in extracted dir, using parent dir: {alt_train_file}")
+            train_file = alt_train_file
+        else:
+            cwd_train_file = os.path.join(os.getcwd(), os.path.basename(train_file))
+            attempted_train_files.append(cwd_train_file)
+            if os.path.isfile(cwd_train_file):
+                print(f"[INFO] Training file not found in extracted or parent dir, using cwd: {cwd_train_file}")
+                train_file = cwd_train_file
+            else:
+                print(f"[ERROR] Training file not found. Attempted paths:")
+                for p in attempted_train_files:
+                    print(f"  - {p}")
+                return None
+    
+    attempted_dev_files = [dev_file]
+    if not os.path.isfile(dev_file):
+        alt_dev_file = os.path.abspath(os.path.join(os.path.dirname(dev_file), '..', os.path.basename(dev_file)))
+        attempted_dev_files.append(alt_dev_file)
+        if os.path.isfile(alt_dev_file):
+            print(f"[INFO] Dev file not found in extracted dir, using parent dir: {alt_dev_file}")
+            dev_file = alt_dev_file
+        else:
+            cwd_dev_file = os.path.join(os.getcwd(), os.path.basename(dev_file))
+            attempted_dev_files.append(cwd_dev_file)
+            if os.path.isfile(cwd_dev_file):
+                print(f"[INFO] Dev file not found in extracted or parent dir, using cwd: {cwd_dev_file}")
+                dev_file = cwd_dev_file
+            else:
+                print(f"[ERROR] Dev file not found. Attempted paths:")
+                for p in attempted_dev_files:
+                    print(f"  - {p}")
+                return None
     
     # Prepare data
     train_texts, train_labels = read_ner_data(train_file)
@@ -266,7 +280,7 @@ def check_submission_zip(zip_path):
         
         # Test each tokenizer
         for i in range(1, 4):
-            tokenizer_path = os.path.join(extract_dir, f"trained_tokenizer/tokenizer_{i}.pkl")
+            tokenizer_path = os.path.join(extract_dir, f"trained_tokenizers/tokenizer_{i}.pkl")
             print(f"\n--- Checking Tokenizer {i} ---")
             
             try:
@@ -279,10 +293,7 @@ def check_submission_zip(zip_path):
             if not test_tokenizer_methods(tokenizer):
                 continue
             
-            # Test efficiency
-            domain_test_path = os.path.join(extract_dir, DOMAIN_TEST_FILE)
-            test_tokenizer_efficiency(tokenizer, domain_test_path)
-            
+    
             # Train and eval NER
             train_file = os.path.join(extract_dir, NER_TRAIN_FILE)
             dev_file = os.path.join(extract_dir, NER_DEV_FILE)

@@ -339,30 +339,3 @@ def _remove_repeated_letters(text: str) -> str:
 
 def _remove_suffix_and_prefix(text: str) -> str:
     return URL_SUFFIX_PREFIX_PATTERN.sub(clean_url, text)
-
-# text_file = []
-# with open("../data/small_test_data.txt", 'r', encoding='utf-8') as f:
-#     text_file = f.readlines()
-
-# text = "Mrs.CJBaran&lt;3 OMG???!!!! what the hell he's very intereting...... Ｕｎｉｃｏｄｅ! 🅤🅝🅘🅒🅞🅓🅔‽ 🇺‌🇳‌🇮‌🇨‌🇴‌🇩‌🇪! 😄 ﬃ é ain't The   very name strikes Dr. Smith fear and awe into the hearts of programmers worldwide.   We all know we ought to “support Unicode” in our software (whatever that means—like using wchar_t for all the strings, right?). But Unicode can be abstruse, and diving into the thousand-page Unicode Standard plus its dozens of supplementary annexes, reports, and notes can be more than a little intimidating. I don’t blame programmers for still finding the whole thing mysterious, even 30 years after Unicode’s inception. http://bit.ly/Q3o2N  just listen to it Demi is amaizing"
-# text = "good things happen to those who wait. - soï¿½iï¿½m waiting. good things coming up aheadï¿½bring it.  iï¿½m excited!... http://tumblr.com/xlt1ub13n"
-# text = "@A_True_Diamond.  comeeee already. Sheesh. I Might go to l a in 2 weeks but idk. Its a guy situation thing. Kinda dnt wanna be obligated"
-# text = "@igrigorik Oh, nice, #London it's a profile of you  Nice job on getting in the National Post  http://tinyurl.com/czewbw"
-# text = "@danaschurer me toooo. so jealous of @nicoledegroot !! miss your face. hope you have a fun night. i'm off to get druuuuunk"
-# text = "@MISTERMORALES Steve, thnx 4 yr DM! thanks so much, twitter won't let me dm u back tho bc yr not following me it sez...bummer"
-# text = "@we_like_her I hope I don't have to wait for another christening party to see u"
-# text = "just got back from shopping!!!! got loads of DVDs and make up and a Hannah Montana CD"
-# text = "@Lynaarchuleta WHAT!! there comin back to paris AGAIN? r u serious? they havnt been once to australia yet"
-# normalizer = Normalizer(unicode_normalization='NFKD',
-#                         lower_case="TITLE CASE + STOP WORDS",
-#                         remove_accents=True,
-#                         expand_contractions=True,
-#                         replace_urls=True,
-#                         replace_usernames=True,
-#                         replace_hashtag=True,
-#                         replace_html_tags=True)
-# text = normalize_text_file(normalizer, (text_file, 0))
-# for sentence in text:
-#     print(sentence)
-
-# print(normalizer.normalize_text(text))
