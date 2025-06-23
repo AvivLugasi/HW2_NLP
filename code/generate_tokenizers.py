@@ -51,17 +51,14 @@ def generate_normalizer(domain: Literal[1, 2, 3]):
 def generate_pre_tokenizer(domain: Literal[1, 2, 3]):
     if domain == 1:
         return PreTokenizer(
-            train_mode=True,
             split_punctuation=True
         )
     elif domain == 2:
         return PreTokenizer(
-            train_mode=True,
             split_punctuation=True
         )
     else:
         return PreTokenizer(
-            train_mode=True,
             split_punctuation=True
         )
 
