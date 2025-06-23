@@ -36,7 +36,7 @@ def generate_normalizer(domain: Literal[1, 2, 3]):
     else:
         return Normalizer(
             unicode_normalization=None,
-            lower_case="TITLE CASE + STOP WORDS",
+            lower_case=None,
             remove_accents=False,
             expand_contractions=False,
             replace_urls=False,
@@ -44,7 +44,8 @@ def generate_normalizer(domain: Literal[1, 2, 3]):
             replace_hashtag=False,
             replace_html_tags=False,
             remove_repeated_letters=False,
-            remove_suffix_and_prefix=False
+            remove_suffix_and_prefix=False,
+            remove_needless_punctuation=False
         )
 
 
