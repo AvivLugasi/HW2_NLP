@@ -65,7 +65,6 @@ class BPETokenizer(BaseTokenizer, ABC):
         # PreTokenizer
         if pre_tokenizer is None:
             pre_tokenizer = PreTokenizer(
-                train_mode=True,
                 split_punctuation=True
             )
         self.pre_tokenizer = pre_tokenizer
