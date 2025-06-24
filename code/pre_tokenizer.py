@@ -19,8 +19,7 @@ def pre_tokenize_text_file(pre_tokenizer, batch_of_text: tuple) -> List[List[str
     logging.info(f"==== Starting pre tokenization of text (total lines = {len(batch_of_text[0])}) ====\n")
     logging.info(f"==== pre tokenization flags ====\n"
                  f"\tsplit_punctuation={pre_tokenizer.split_punctuation}\n"
-                 f"\tcustom_spliter={pre_tokenizer.custom_spliter}\n"
-                 f"\ttrain_mode={pre_tokenizer.train_mode}\n")
+                 f"\tcustom_spliter={pre_tokenizer.custom_spliter}\n")
     text, start_idx = batch_of_text
     pre_tokenized_text = [pre_tokenizer.pre_tokenize_str(text=t) for t in text]
     logging.info(f"==== Finished pre tokenization ====\n")
@@ -29,9 +28,8 @@ def pre_tokenize_text_file(pre_tokenizer, batch_of_text: tuple) -> List[List[str
 
 class PreTokenizer:
     def __init__(self,
-                 split_punctuation: bool = False,
-                 custom_spliter: str = None,
-                 train_mode: bool = False):
+                 split_punctuation: bool = True,
+                 custom_spliter: str = None):
         """
         Initialize the PreTokenizer.
 
@@ -40,8 +38,6 @@ class PreTokenizer:
                                        special markers like "<W>", "[USER]", etc.).
             custom_spliter (str): If set to "PRE DEFINED", use SPLITER_REGEX; if another regex,
                                   use that. If None, split on whitespace only.
-            train_mode (bool): Controls whether to use multi‐threaded batching (True) or not (False),
-                               but DOES NOT affect whether we prefix "<W>": we always will.
         """
         self.split_punctuation = split_punctuation
         if custom_spliter is not None:
@@ -51,9 +47,6 @@ class PreTokenizer:
                 self.custom_spliter = custom_spliter
         else:
             self.custom_spliter = None
-
-        # NOTE: train_mode no longer controls "<W>"‐prefixing. We ALWAYS prefix "<W>".
-        self.train_mode = train_mode
 
     def pre_tokenize_batch(self, text: List[str]) -> List[List[str]]:
         """

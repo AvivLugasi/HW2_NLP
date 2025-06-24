@@ -699,7 +699,7 @@ DETERMINERS = (
     "several",
     "some", "somebody", "something", "somewhere", "sufficient", "that", "the", "these", "this", "those",
     "three",
-    "thrice", "twice", "two", "us", "various", "we", "what", "whatever", "which", "whichever", "you", "zero")
+    "thrice", "twice", "two", "us", "various", "we", "what", "whatever", "which", "whichever", "you", "zero", "’")
 
 # regex for detecting any type of url
 URL_RE = r'(f?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})'
