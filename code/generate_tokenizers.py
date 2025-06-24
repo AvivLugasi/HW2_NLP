@@ -17,7 +17,7 @@ def generate_normalizer(domain: Literal[1, 2, 3]):
             replace_usernames=False,
             replace_hashtag=False,
             replace_html_tags=False,
-            remove_repeated_letters=False,
+            remove_repeated_letters=True,
             remove_suffix_and_prefix=False
         )
     elif domain == 2:
