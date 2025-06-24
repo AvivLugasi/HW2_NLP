@@ -161,7 +161,7 @@ class BPETokenizer(BaseTokenizer, ABC):
             merged_symbols = self._apply_merges(symbols)
             all_subwords.extend(merged_symbols)
 
-        logging.debug(f"generated tokens: {all_subwords}")
+        #logging.debug(f"generated tokens: {all_subwords}")
         return [self.token_to_id.get(token, self.token_to_id["[UNK]"]) for token in all_subwords]
 
     def _apply_merges(self, symbols: List[str]) -> List[str]:
