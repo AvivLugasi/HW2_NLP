@@ -4,6 +4,7 @@ from pre_tokenizer import PreTokenizer
 import os
 from utils import *
 from bpe_tokenizer import BPETokenizer
+from combiner import DatasetBalancer
 
 
 def generate_normalizer(domain: Literal[1, 2, 3]):
@@ -11,40 +12,24 @@ def generate_normalizer(domain: Literal[1, 2, 3]):
         return Normalizer(
             unicode_normalization=None,
             lower_case="TITLE CASE + STOP WORDS",
-            remove_accents=False,
-            expand_contractions=False,
-            replace_urls=False,
-            replace_usernames=False,
-            replace_hashtag=False,
-            replace_html_tags=False,
+            remove_needless_ws = True,
             remove_repeated_letters=True,
-            remove_suffix_and_prefix=False
+            remove_needless_punctuation=True
         )
     elif domain == 2:
         return Normalizer(
             unicode_normalization=None,
             lower_case=None,
-            remove_accents=False,
-            expand_contractions=False,
-            replace_urls=False,
-            replace_usernames=False,
-            replace_hashtag=False,
-            replace_html_tags=False,
+            remove_needless_ws=True,
             remove_repeated_letters=False,
-            remove_suffix_and_prefix=False
+            remove_needless_punctuation=False
         )
     else:
         return Normalizer(
             unicode_normalization=None,
             lower_case=None,
-            remove_accents=False,
-            expand_contractions=False,
-            replace_urls=False,
-            replace_usernames=False,
-            replace_hashtag=False,
-            replace_html_tags=False,
+            remove_needless_ws=True,
             remove_repeated_letters=False,
-            remove_suffix_and_prefix=False,
             remove_needless_punctuation=False
         )
 
@@ -63,16 +48,29 @@ def generate_pre_tokenizer(domain: Literal[1, 2, 3]):
             split_punctuation=True
         )
 
+def create_dataset_for_tokenizer3():
+    balancer = DatasetBalancer(
+        domain1_path='../data/domain_1_train.txt',
+        domain2_path='../data/domain_2_train.txt',
+        output_path='../data/domain_3_train.txt'
+    )
+    balancer.run()
 
 def generate_tokenizer(domain: Literal[1, 2, 3]):
     logging.info(f"Generate tokenizer for domain-{domain}")
     normalizer = generate_normalizer(domain)
     pre_tokenizer = generate_pre_tokenizer(domain)
 
-    vocab_size = 5000
+    if domain == 1:
+        vocab_size = 5000
+    else:
+        vocab_size = 10000
 
-    domain_file = f"data/domain_{domain}_train.txt"
-    output_dir = "trained_tokenizers"
+    if domain == 3:
+        create_dataset_for_tokenizer3()
+
+    domain_file = f"../data/domain_{domain}_train.txt"
+    output_dir = "../trained_tokenizers"
     tokenizer_file = f"tokenizer_{domain}.pkl"
     os.makedirs(output_dir, exist_ok=True)
     logging.info(f"Reading domain data from {domain_file}")
