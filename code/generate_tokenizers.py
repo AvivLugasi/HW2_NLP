@@ -48,13 +48,6 @@ def generate_pre_tokenizer(domain: Literal[1, 2, 3]):
             split_punctuation=True
         )
 
-def create_dataset_for_tokenizer3():
-    balancer = DatasetBalancer(
-        domain1_path='../data/domain_1_train.txt',
-        domain2_path='../data/domain_2_train.txt',
-        output_path='../data/domain_3_train.txt'
-    )
-    balancer.run()
 
 def generate_tokenizer(domain: Literal[1, 2, 3]):
     logging.info(f"Generate tokenizer for domain-{domain}")
@@ -67,9 +60,10 @@ def generate_tokenizer(domain: Literal[1, 2, 3]):
         vocab_size = 10000
 
     if domain == 3:
-        create_dataset_for_tokenizer3()
+        domain_file = f"../data_for_tokenizer_3/domain_{domain}_train.txt"
+    else:
+        domain_file = f"../data/domain_{domain}_train.txt"
 
-    domain_file = f"../data/domain_{domain}_train.txt"
     output_dir = "../trained_tokenizers"
     tokenizer_file = f"tokenizer_{domain}.pkl"
     os.makedirs(output_dir, exist_ok=True)
@@ -91,6 +85,7 @@ def generate_tokenizer(domain: Literal[1, 2, 3]):
 def main():
     for i in [1, 2, 3]:
         generate_tokenizer(domain=i)
+
 
 
 if __name__ == "__main__":
